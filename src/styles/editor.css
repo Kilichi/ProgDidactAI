@@ -1,0 +1,337 @@
+/* El editor comparte los colores de la aplicación y prioriza la lectura. */
+.editor-heading h1 {
+    max-width: 850px;
+    font-size: clamp(25px, 2.2vw, 34px);
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
+.back-link {
+    margin-bottom: 22px;
+    color: var(--muted);
+}
+
+.editor-metadata {
+    overflow: hidden;
+    box-shadow: none;
+}
+
+.editor-metadata > summary {
+    padding: 20px 24px;
+    background: var(--surface);
+}
+
+.editor-metadata[open] > summary {
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 20px;
+}
+
+.document-edit-toolbar {
+    top: 12px;
+    gap: 16px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--surface);
+    box-shadow: var(--subtle-shadow);
+}
+
+.editor-save-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 8px;
+    font-weight: 550;
+}
+
+.editor-save-status::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+}
+
+.document-editor-layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 24px;
+}
+
+.section-sidebar {
+    padding: 20px 12px;
+    border-radius: 16px;
+    box-shadow: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+}
+
+.section-sidebar-heading {
+    padding: 0 8px 16px;
+}
+
+.section-sidebar .search-field {
+    min-height: 40px;
+    background: var(--surface-soft);
+    border-color: transparent;
+}
+
+.section-link {
+    margin-bottom: 5px;
+    padding: 12px;
+    border-radius: 10px;
+    color: var(--muted);
+    transition: background 150ms ease, color 150ms ease;
+}
+
+.section-link:hover {
+    background: var(--surface-soft);
+    color: var(--ink);
+}
+
+.section-link.selected {
+    background: var(--accent-soft);
+    color: var(--blue);
+    box-shadow: inset 3px 0 var(--blue);
+}
+
+.section-link small {
+    color: inherit;
+    font-weight: 600;
+}
+
+.section-status {
+    color: var(--muted);
+}
+
+.section-status.done {
+    color: var(--success);
+}
+
+.document-paper {
+    padding: 36px clamp(24px, 3vw, 52px);
+    border-radius: 16px;
+    box-shadow: var(--subtle-shadow);
+}
+
+.document-paper-heading {
+    padding-bottom: 28px;
+}
+
+.document-paper-heading h2 {
+    font-size: clamp(23px, 2vw, 30px);
+    letter-spacing: -0.7px;
+    line-height: 1.3;
+}
+
+.document-section {
+    padding: 30px 0;
+    scroll-margin-top: 110px;
+}
+
+.document-section:last-child {
+    border-bottom: 0;
+}
+
+.document-section-toolbar {
+    margin-bottom: 16px;
+    font-size: 11px;
+    letter-spacing: 0.15px;
+}
+
+.document-section-title {
+    gap: 12px;
+}
+
+.document-section-title > input {
+    width: 82px;
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    font-size: 13px;
+}
+
+.document-section-title > .document-field {
+    color: var(--ink);
+    font-size: 19px;
+    letter-spacing: -0.3px;
+}
+
+.document-field {
+    padding: 8px 10px;
+    border-radius: 8px;
+    line-height: 1.85;
+    transition: background 150ms ease, border-color 150ms ease;
+}
+
+.document-field:focus {
+    outline: 3px solid var(--accent-soft);
+    outline-offset: 1px;
+}
+
+.document-section-notes {
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--warning-soft);
+}
+
+.document-table-scroll {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+}
+
+.document-table td,
+.document-table th {
+    border-width: 0 1px 1px 0;
+}
+
+.document-table td:last-child,
+.document-table th:last-child {
+    border-right: 0;
+}
+
+.document-table tr:last-child td {
+    border-bottom: 0;
+}
+
+.document-table th {
+    padding: 12px;
+    font-weight: 600;
+}
+
+.document-table .document-field {
+    padding: 10px;
+    line-height: 1.65;
+}
+
+.document-reference {
+    top: 100px;
+    border-radius: 16px;
+    box-shadow: var(--subtle-shadow);
+}
+
+.document-reference > header {
+    padding: 18px;
+    background: var(--surface-soft);
+    font-size: 13px;
+}
+
+.document-reference iframe {
+    height: calc(100vh - 200px);
+    background: var(--surface-soft);
+}
+
+.section-content {
+    border-radius: 16px;
+    box-shadow: var(--subtle-shadow);
+}
+
+.add-block-actions {
+    gap: 10px;
+    padding: 18px 0;
+}
+
+.editor-save-bar {
+    margin-top: 28px;
+    padding: 20px 24px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+}
+
+.source-dialog {
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    box-shadow: var(--raised-shadow);
+}
+
+.source-dialog::backdrop {
+    background: rgb(13 15 32 / 65%);
+    backdrop-filter: blur(6px);
+}
+
+.source-dialog > header {
+    padding: 22px 24px;
+}
+
+.source-toolbar,
+.document-preview-toolbar {
+    padding: 16px 24px;
+    background: var(--surface-soft);
+}
+
+.json-preview {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    background: var(--surface-soft);
+    color: var(--ink);
+    border-radius: 12px;
+}
+
+@media (max-width: 1400px) {
+    .editor-layout.with-reference {
+        grid-template-columns: minmax(0, 1fr) minmax(300px, 0.9fr);
+    }
+}
+
+@media (max-width: 900px) {
+    .document-editor-layout,
+    .editor-layout.with-reference {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .document-editor-layout > .section-sidebar,
+    .document-reference {
+        position: static;
+        max-height: 280px;
+    }
+
+    .document-reference {
+        max-height: none;
+    }
+
+    .document-reference iframe {
+        height: 65vh;
+    }
+}
+
+@media (max-width: 700px) {
+    .document-edit-toolbar {
+        position: static;
+        padding: 12px;
+    }
+
+    .document-edit-actions {
+        width: 100%;
+    }
+
+    .editor-save-status {
+        margin-left: auto;
+    }
+
+    .document-paper {
+        padding: 24px 16px;
+    }
+
+    .document-section-title {
+        gap: 4px;
+    }
+
+    .document-section-title > input {
+        width: 62px;
+    }
+
+    .document-section-title > .document-field {
+        font-size: 17px;
+    }
+
+    .editor-save-bar {
+        padding: 16px;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+
+    .editor-metadata > summary > span {
+        display: none;
+    }
+}

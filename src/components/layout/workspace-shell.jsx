@@ -73,6 +73,10 @@ export function WorkspaceShell({ children }) {
             </a>
             <div className="workspace">
                 <aside className="sidebar">
+                    <div className="workspace-label">
+                        <span className="workspace-label-dot" />
+                        ESPACIO DOCENTE
+                    </div>
                     <Link
                         href="/"
                         className="brand"
@@ -90,7 +94,7 @@ export function WorkspaceShell({ children }) {
                                 AI
                             </span>
                             <small>
-                                Tu programación, al día.
+                                Documentos que evolucionan.
                             </small>
                         </span>
                     </Link>
@@ -115,17 +119,29 @@ export function WorkspaceShell({ children }) {
                             </Link>;
                         })}
                     </nav>
+                    <Link
+                        href="/importar"
+                        className="sidebar-create"
+                        onClick={guardNavigation}>
+                        <Icon
+                            name="plus"
+                            size={18} />
+                        Nueva programación
+                        <span>
+                            +
+                        </span>
+                    </Link>
                     <div className="sidebar-tip">
                         <span className="tip-icon">
                             <Icon name="sparkles" />
                         </span>
                         <strong>
-                            De un documento a una
+                            Todo empieza con
                             <br />
-                            programación actualizada.
+                            tu documento.
                         </strong>
                         <p>
-                            Importa, revisa y dale un formato común a todo tu ciclo.
+                            Recupera lo que ya tienes. Actualiza solo lo que necesitas.
                         </p>
                         <Link
                             href="/importar"
@@ -184,7 +200,7 @@ export function WorkspaceShell({ children }) {
                             ProgDidactAI
                         </span>
                         <span>
-                            Diseñado para que te centres en enseñar.
+                            Hecho para preparar el próximo curso con calma.
                         </span>
                     </footer>
                 </div>

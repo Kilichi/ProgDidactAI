@@ -1,4 +1,7 @@
 import './globals.css';
+import '@/styles/visual-system.css';
+import '@/styles/workspace.css';
+import '@/styles/editor.css';
 import { WorkspaceShell } from '@/components/layout/workspace-shell';
 const themeInitialization = `
     (function () {

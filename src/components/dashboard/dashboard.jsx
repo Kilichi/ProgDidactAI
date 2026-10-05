@@ -16,6 +16,7 @@ export function Dashboard() {
     const [creating, setCreating] = useState(false);
     const { notify } = useWorkspace();
     const router = useRouter();
+    const recentProgram = [...(programs || [])].sort((first, second) => new Date(second.updatedAt) - new Date(first.updatedAt))[0];
     const reviewedCount = programs?.filter((program) => program.status === 'reviewed').length || 0;
     const sectionCount = programs?.reduce((count, program) => count + program.sections.length, 0) || 0;
     const filteredPrograms = programs?.filter((program) => program.module.toLowerCase().includes(search.toLowerCase()) && (filter === 'all' || program.status === filter)) || [];
@@ -101,15 +102,15 @@ export function Dashboard() {
                             name="sparkles"
                             size={13}
                         />
-                        Tu asistente de programación
+                        TU ESPACIO DOCENTE
                     </span>
                     <h2 id="welcome-title">
-                        El curso cambia.
+                        Menos papeleo.
                         <br />
-                        Tu programación también.
+                        Más tiempo para enseñar.
                     </h2>
                     <p>
-                        Recupera los documentos del año pasado, edita lo que necesitas y exporta una programación con un formato común.
+                        Tus documentos, tus cambios, tu próximo curso. Importa, edita y prepara tus programaciones desde un mismo lugar.
                     </p>
                     <Link
                         className="button button-dark"
@@ -121,74 +122,124 @@ export function Dashboard() {
                             size={18}
                         />
                     </Link>
+                    {recentProgram && <Link
+                        className="welcome-continue"
+                        href={`/programaciones/${recentProgram.id}`}
+                    >
+                        Continuar editando
+                        <Icon
+                            name="arrow"
+                            size={16} />
+                    </Link>}
                     <span className="welcome-note">
                         PDF y Word · Revisión a tu ritmo
                     </span>
                 </div>
                 <div
-                    className="document-illustration"
-                    aria-hidden="true"
-                >
-                    <div className="paper-back" />
-                    <div className="paper-front">
-                        <div className="paper-top">
-                            <span className="paper-logo">
-                                P
+                    className="dashboard-preview"
+                    aria-hidden="true">
+                    <div className="preview-orbit" />
+                    <div className="preview-window">
+                        <div className="preview-window-toolbar">
+                            <span className="preview-window-dots">
+                                <i />
+                                <i />
+                                <i />
                             </span>
                             <span>
-                                PROGRAMACIÓN DIDÁCTICA
-                                <br />
-                                <small>
-                                    DEPARTAMENTO DE INFORMÁTICA
-                                </small>
+                                Tu programación
                             </span>
-                            <span className="paper-dots">
-                                •••
-                            </span>
+                            <Icon
+                                name="file"
+                                size={15} />
                         </div>
-                        <div className="paper-title">
-                            Un nuevo curso.
-                            <br />
-                            Una misma dirección.
-                        </div>
-                        <div className="paper-subtitle">
-                            Desarrollo de Aplicaciones Web
-                        </div>
-                        <div className="paper-lines">
-                            <i />
-                            <i />
-                            <i />
-                        </div>
-                        <div className="paper-table">
-                            <i />
-                            <i />
-                            <i />
-                            <i />
-                            <i />
-                            <i />
-                        </div>
-                        <div className="paper-bottom">
-                            CURSO 2026 / 2027
-                            <span>
-                                01
-                            </span>
+                        <div className="preview-window-body">
+                            <div className="preview-mini-sidebar">
+                                <Icon
+                                    name="grid"
+                                    size={16} />
+                                <Icon
+                                    name="file"
+                                    size={16} />
+                                <Icon
+                                    name="check"
+                                    size={16} />
+                            </div>
+                            <div className="preview-document">
+                                <span className="preview-document-label">
+                                    PROGRAMACIÓN DIDÁCTICA
+                                </span>
+                                <h3>
+                                    {recentProgram?.module || 'Un nuevo curso, bien organizado.'}
+                                </h3>
+                                <div className="preview-document-meta">
+                                    <span>
+                                        {recentProgram?.code || 'DAW'}
+                                    </span>
+                                    <span>
+                                        Curso 2026 / 2027
+                                    </span>
+                                </div>
+                                <div className="preview-document-heading">
+                                    <span>
+                                        01
+                                    </span>
+                                    {recentProgram?.sections[0]?.title || 'Tu contenido, listo para editar'}
+                                </div>
+                                <div className="preview-document-lines">
+                                    <i />
+                                    <i />
+                                    <i />
+                                </div>
+                                <div className="preview-document-table">
+                                    <span>
+                                        Contenido
+                                    </span>
+                                    <span>
+                                        Revisión
+                                    </span>
+                                    <span>
+                                        Textos y apartados
+                                    </span>
+                                    <span>
+                                        <Icon
+                                            name="check"
+                                            size={13} />
+                                    </span>
+                                    <span>
+                                        Listas y tablas
+                                    </span>
+                                    <span>
+                                        <Icon
+                                            name="check"
+                                            size={13} />
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div className="floating-check">
+                    <div className="preview-floating-badge">
                         <span>
                             <Icon
                                 name="check"
-                                size={17}
-                            />
+                                size={18} />
                         </span>
                         <div>
                             <strong>
-                                Todo en su sitio
+                                El original, siempre contigo
                             </strong>
                             <small>
-                                Textos, listas y tablas editables
+                                Edita sin perder la referencia
                             </small>
                         </div>
+                    </div>
+                    <div className="preview-file-badge">
+                        <Icon
+                            name="file"
+                            size={17} />
+                        <span>
+                            PDF + Word
+                        </span>
                     </div>
                 </div>
             </section>
