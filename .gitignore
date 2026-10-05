@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.next-dev/
+out/
+.env
+.env.*
+!.env.example
+data/
+artifacts/
+*.log
+__pycache__/
+.agents/
+.codex/
+.aws/
+*.zip
