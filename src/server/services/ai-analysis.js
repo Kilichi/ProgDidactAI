@@ -184,7 +184,7 @@ export async function requestAI(provider, prompt, fetchImpl = fetch) {
     }
 }
 export function splitAnalysisBlock(block, characterLimit = 12000) {
-    if (JSON.stringify(block).length <= characterLimit) {
+    if (block.cellSpans || JSON.stringify(block).length <= characterLimit) {
         return [block];
     }
 
@@ -282,6 +282,13 @@ export async function refinePrograms(programs, provider, progress, fetchImpl) {
             batchSize = 0;
         };
         for (const block of section.blocks.flatMap((candidate) => splitAnalysisBlock(candidate, Math.min(batchLimit, 12000)))) {
+            // Spatially reconstructed tables are authoritative; semantic
+            // reclassification must not break their rows or cell associations.
+            if (block.type === 'table') {
+                await flush();
+                refined.push(block);
+                continue;
+            }
             const size = JSON.stringify(block).length;
             if (size > batchLimit) {
                 await flush();

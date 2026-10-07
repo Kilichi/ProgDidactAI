@@ -1,4 +1,6 @@
 'use client';
+
+import { tableCellSpan, appendTableRow, removeTableRow, appendTableColumn } from '@/lib/table-layout';
 import { getBlockText } from '@/lib/api';
 import { Icon } from '@/components/ui/icon';
 export function BlockEditor({
@@ -9,6 +11,8 @@ export function BlockEditor({
         onChange({
             ...block,
             type,
+            cellSpans: undefined,
+            columnWidths: undefined,
             text: type === 'text' ? originalText : '',
             items: type === 'list' ? originalText.split('\n') : [],
             columns: type === 'table' ? ['Contenido'] : [],
@@ -139,7 +143,13 @@ export function BlockEditor({
             {block.type === 'table' && <>
                 <div className="table-scroll">
                     <table className="editable-table">
-                        <thead>
+                        {block.columnWidths && <colgroup>
+                            {block.columnWidths.map((width, index) => <col
+                                key={index}
+                                style={{ width: `${width}%` }} />)}
+                            <col style={{ width: '30px' }} />
+                        </colgroup>}
+                        {!block.cellSpans && <thead>
                             <tr>
                                 {block.columns.map((column, columnIndex) => <th key={columnIndex}>
                                     <input
@@ -176,27 +186,30 @@ export function BlockEditor({
                                     </span>
                                 </th>
                             </tr>
-                        </thead>
+                        </thead>}
                         <tbody>
                             {block.rows.map((row, rowIndex) => <tr key={rowIndex}>
-                                {row.map((cell, columnIndex) => <td key={columnIndex}>
-                                    <textarea
-                                        aria-label={`Fila ${rowIndex + 1}, columna ${columnIndex + 1}`}
-                                        value={cell}
-                                        rows={Math.min(7, Math.max(2, cell.split('\n').length))}
-                                        onChange={(event) => changeRow(rowIndex, columnIndex, event.target.value)}
-                                    />
-                                </td>)}
+                                {row.map((cell, columnIndex) => {
+                                    const span = tableCellSpan(block, rowIndex, columnIndex);
+                                    return span && <td
+                                        key={columnIndex}
+                                        rowSpan={span.rowSpan}
+                                        colSpan={span.colSpan}>
+                                        <textarea
+                                            aria-label={`Fila ${rowIndex + 1}, columna ${columnIndex + 1}`}
+                                            value={cell}
+                                            rows={Math.min(7, Math.max(2, cell.split('\n').length))}
+                                            onChange={(event) => changeRow(rowIndex, columnIndex, event.target.value)}
+                                        />
+                                    </td>;
+                                })}
                                 <td className="row-action-cell">
                                     <button
                                         className="icon-button"
                                         aria-label={`Eliminar fila ${rowIndex + 1}`}
                                         onClick={() => {
                                             if (window.confirm('¿Eliminar esta fila?')) {
-                                                onChange({
-                                                    ...block,
-                                                    rows: block.rows.filter((_, position) => position !== rowIndex),
-                                                });
+                                                onChange(removeTableRow(block, rowIndex));
                                             }
                                         }}
                                     >
@@ -205,7 +218,7 @@ export function BlockEditor({
                                             size={13}
                                         />
                                     </button>
-                                    {rowIndex > 0 && <button
+                                    {rowIndex > 0 && !block.cellSpans && <button
                                         className="icon-button"
                                         aria-label={`Unir fila ${rowIndex + 1} con la anterior`}
                                         onClick={() => {
@@ -215,6 +228,8 @@ export function BlockEditor({
                                             onChange({
                                                 ...block,
                                                 rows,
+                                                cellSpans: undefined,
+                                                columnWidths: undefined,
                                             });
                                         }}
                                     >
@@ -228,10 +243,7 @@ export function BlockEditor({
                 <div className="table-actions">
                     <button
                         className="text-button"
-                        onClick={() => onChange({
-                            ...block,
-                            rows: [...block.rows, Array(block.columns.length).fill('')],
-                        })}
+                        onClick={() => onChange(appendTableRow(block))}
                     >
                         <Icon
                             name="plus"
@@ -242,11 +254,7 @@ export function BlockEditor({
                     <button
                         className="text-button"
                         disabled={block.columns.length >= 40}
-                        onClick={() => onChange({
-                            ...block,
-                            columns: [...block.columns, `Columna ${block.columns.length + 1}`],
-                            rows: block.rows.map((row) => [...row, '']),
-                        })}
+                        onClick={() => onChange(appendTableColumn(block))}
                     >
                         <Icon
                             name="plus"

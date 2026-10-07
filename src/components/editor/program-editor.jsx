@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { editFieldId } from '@/lib/edit-location';
 import { useResource } from '@/hooks/use-resource';
 import { apiRequest, createEmptyBlock, getBlockText } from '@/lib/api';
 import { useWorkspace } from '@/components/layout/workspace-shell';
@@ -46,6 +48,34 @@ export function ProgramEditor({ programId }) {
         window.addEventListener('keydown', handleShortcut);
         return () => window.removeEventListener('keydown', handleShortcut);
     }, []);
+    const openedLocation = useRef('');
+    const queryString = useSearchParams().toString();
+    useEffect(() => {
+        if (!program) {
+            return;
+        }
+        const query = new URLSearchParams(queryString);
+        const sectionId = query.get('sectionId');
+        if (!sectionId || openedLocation.current === queryString ||
+            !program.sections.some((candidate) => candidate.id === sectionId)) {
+            return;
+        }
+        openedLocation.current = queryString;
+        setSelectedId(sectionId);
+        setSearch('');
+        setEditorMode('document');
+        const location = Object.fromEntries(query);
+        const timer = setTimeout(() => {
+            const field = document.getElementById(editFieldId(location));
+            const target = field || document.getElementById(`document-section-${sectionId}`);
+            target?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+            });
+            field?.focus({ preventScroll: true });
+        }, 150);
+        return () => clearTimeout(timer);
+    }, [program, queryString]);
     if (loading) {
         return <LoadingState label="Abriendo tu programación…" />;
     }
@@ -219,6 +249,7 @@ export function ProgramEditor({ programId }) {
                         {' '}
                         <span className="version-label">
                             Versión
+                            {' '}
                             {program.revision}
                             {' '}
                             ·
@@ -524,7 +555,7 @@ export function ProgramEditor({ programId }) {
                                 onChange={(updated) => updateSection({ blocks: section.blocks.map((candidate) => candidate.id === block.id ? updated : candidate) })}
                                 onRemove={() => updateSection({ blocks: section.blocks.filter((candidate) => candidate.id !== block.id) })}
                                 onMove={(direction) => reorderBlock(index, direction)}
-                                canMerge={block.type === 'table' && section.blocks[index + 1]?.type === 'table' && block.columns.length === section.blocks[index + 1].columns.length}
+                                canMerge={!block.cellSpans && !section.blocks[index + 1]?.cellSpans && block.type === 'table' && section.blocks[index + 1]?.type === 'table' && block.columns.length === section.blocks[index + 1].columns.length}
                                 onMerge={() => {
                                     const following = section.blocks[index + 1];
                                     const merged = {

@@ -1,3 +1,4 @@
+import { tableCellSpan } from '../../lib/table-layout.js';
 import puppeteer from 'puppeteer-core';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -68,8 +69,12 @@ function renderBlock(block) {
         return `<ul>${block.items.map((item) => `<li>${renderRichText(item)}</li>`).join('')}</ul>`;
     }
     const header = block.columns.map((column) => `<th>${escapeHTML(column)}</th>`).join('');
-    const rows = block.rows.map((row) => `<tr>${row.map((cell) => `<td>${renderRichText(cell)}</td>`).join('')}</tr>`).join('');
-    return `<table><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>`;
+    const rows = block.rows.map((row, rowIndex) => `<tr>${row.map((cell, columnIndex) => {
+        const span = tableCellSpan(block, rowIndex, columnIndex);
+        return span ? `<td rowspan="${span.rowSpan}" colspan="${span.colSpan}">${renderRichText(cell)}</td>` : '';
+    }).join('')}</tr>`).join('');
+    const columns = block.columnWidths ? `<colgroup>${block.columnWidths.map((width) => `<col style="width:${width}%">`).join('')}</colgroup>` : '';
+    return `<table>${columns}${block.cellSpans ? '' : `<thead><tr>${header}</tr></thead>`}<tbody>${rows}</tbody></table>`;
 }
 
 function markerToken(identifier) {

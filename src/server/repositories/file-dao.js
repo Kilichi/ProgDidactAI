@@ -102,6 +102,29 @@ export class FileDAO {
             return s;
         });
     }
+    async deleteSource(id) {
+        return this.mutate((state) => {
+            delete state.sources[id]; return { ok: true };
+        });
+    }
+    async deleteFileDocument(id, programs) {
+        return this.mutate((state) => {
+            if (!state.sources[id]) {
+                throw new AppError('Documento original no encontrado.', 404);
+            }
+            for (const program of programs) {
+                if (state.programs[program.id]?.revision !== program.revision) {
+                    throw new AppError('El documento ha cambiado. Recarga antes de eliminarlo.', 409);
+                }
+            }
+            for (const program of programs) {
+                delete state.programs[program.id];
+                delete state.history[program.id];
+            }
+            delete state.sources[id];
+            return { ok: true };
+        });
+    }
     async getSource(id) {
         const s = this.state.sources[id];
         if (!s) {

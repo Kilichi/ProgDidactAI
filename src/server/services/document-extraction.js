@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import mammoth from 'mammoth';
@@ -86,16 +86,42 @@ export async function extractDocument(filePath, extension, config) {
         if (pages.length > 400) {
             throw new AppError('El límite es de 400 páginas por archivo. Divide el documento en varios archivos.');
         }
+        const tableWarnings = [];
+        try {
+            temp ||= await mkdtemp(path.join(os.tmpdir(), 'progdidactai-tables-'));
+            const bboxPath = path.join(temp, 'words.html');
+            const pagesPath = path.join(temp, 'pages.json');
+            await run(config.pdfToText, ['-bbox-layout', '-enc', 'UTF-8', pdfPath, bboxPath], { timeout: 90000 });
+            await writeFile(pagesPath, JSON.stringify(pages));
+            const { stdout: tableJSON } = await run(config.python || 'python3', [
+                path.join(process.cwd(), 'scripts/extract_tables.py'), pdfPath, bboxPath, pagesPath,
+            ], {
+                timeout: 90000,
+                maxBuffer: 30 * 1024 * 1024,
+            });
+            for (const table of JSON.parse(tableJSON)) {
+                const page = pages[table.page - 1];
+                page.tables ||= [];
+                page.tables.push(table);
+                for (const line of page.lines) {
+                    if (table.sourceRefs.includes(line.id)) {
+                        line.tableId = table.id;
+                    }
+                }
+            }
+        } catch {
+            tableWarnings.push('No se pudo leer la geometría de las tablas. Se conserva el texto; instala Python y pikepdf para conservar las celdas combinadas.');
+        }
         const empty = pages
             .filter((p) => !p.lines.some((l) => !l.footer))
             .map((p) => p.number);
         return {
             pages,
-            warnings: empty.length
+            warnings: [...tableWarnings, ...(empty.length
                 ? [
                     `Páginas sin texto extraíble: ${empty.join(', ')}. Comprueba si necesitan OCR.`,
                 ]
-                : [],
+                : [])],
             extraction: extension === '.pdf' ? 'poppler' : 'libreoffice-poppler',
         };
     } catch (e) {

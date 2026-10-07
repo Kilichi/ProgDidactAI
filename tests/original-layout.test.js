@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { validateProgram } from '../src/server/domain/schemas.js';
 import { config } from '../src/server/config.js';
 import { extractDocument } from '../src/server/services/document-extraction.js';
 import { parseSource } from '../src/server/services/document-parser.js';
@@ -52,8 +53,8 @@ test('las ediciones de títulos y celdas conservan la posición y el número de 
     assert.ok(changes.some((text) => text.text.includes('actualizado')));
     assert.ok(changes.some((text) => text.text.includes('sistemas')));
     for (const page of edited) {
-        assert.equal(page.texts.length, original[page.number - 1].texts.length);
-        for (const text of page.texts) {
+        assert.equal(page.texts.filter((text) => !text.region).length, original[page.number - 1].texts.length);
+        for (const text of page.texts.filter((candidate) => !candidate.region)) {
             const previous = original[page.number - 1].texts.find((candidate) => candidate.id === text.id);
             assert.equal(text.top, previous.top);
             assert.equal(text.left, previous.left);
@@ -95,6 +96,66 @@ print('Diseño y páginas preservados')
         assert.match(validation.stdout, /preservados/);
         prepared.nativeSources[0].edits[0].text = 'Desarrollo '.repeat(100);
         await assert.rejects(() => exportOriginalPDF(prepared, config), /no cabe/);
+    } finally {
+        await rm(directory, {
+            recursive: true,
+            force: true,
+        });
+    }
+});
+
+test('un apartado sin título admite guardado vacío y un título añadido se exporta en el PDF original', async () => {
+    const source = await getSource();
+    const programs = parseSource(source);
+    programs[0].sections[0].title = '';
+    validateProgram(programs[0]);
+    let prepared = await prepareOriginalDocument(programs, [source], config);
+    assert.deepEqual(prepared.unchangedPDF, await readFile(input));
+    programs[0].sections[0].title = 'Criterios de evaluación';
+    validateProgram(programs[0]);
+    prepared = await prepareOriginalDocument(programs, [source], config);
+    assert.ok(prepared.nativeSources[0].edits.some((edit) => edit.insert));
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'progdidactai-title-test-'));
+    try {
+        const output = path.join(directory, 'title.pdf');
+        await writeFile(output, await exportOriginalPDF(prepared, config));
+        const { stdout } = await execute(config.pdfToText, ['-layout', output, '-']);
+        assert.match(stdout, /Criterios de evaluación/);
+        assert.equal(stdout.split('\f').length - 1, 38);
+    } finally {
+        await rm(directory, {
+            recursive: true,
+            force: true,
+        });
+    }
+});
+
+test('las celdas vacías se pueden editar y los desbordamientos indican la celda exacta', async () => {
+    const source = await getSource();
+    const programs = parseSource(source);
+    const program = programs[1];
+    const section = program.sections.find((candidate) => candidate.title === 'Situaciones de aprendizaje');
+    const table = section.blocks.find((block) => block.cellSpans && block.rows.some((row) => row.some((cell) => cell === 'X')));
+    const cell = table.cellSpans.find((candidate) => candidate.row > 0 && candidate.column > 1 && !table.rows[candidate.row][candidate.column]);
+    table.rows[cell.row][cell.column] = 'X';
+    let prepared = await prepareOriginalDocument(programs, [source], config);
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'progdidactai-cell-test-'));
+    try {
+        const output = path.join(directory, 'cell.pdf');
+        await writeFile(output, await exportOriginalPDF(prepared, config));
+        const { stdout } = await execute(config.pdfToText, ['-layout', output, '-']);
+        assert.equal(stdout.split('\f').length - 1, 38);
+        table.rows[cell.row][cell.column] = 'Contenido demasiado largo '.repeat(100);
+        prepared = await prepareOriginalDocument(programs, [source], config);
+        await assert.rejects(() => exportOriginalPDF(prepared, config), (error) => {
+            assert.equal(error.details.location.programId, program.id);
+            assert.equal(error.details.location.sectionId, section.id);
+            assert.equal(error.details.location.blockId, table.id);
+            assert.equal(error.details.location.row, cell.row);
+            assert.equal(error.details.location.column, cell.column);
+            assert.match(error.details.solution, /celda/);
+            return true;
+        });
     } finally {
         await rm(directory, {
             recursive: true,

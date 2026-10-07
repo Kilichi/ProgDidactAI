@@ -2,16 +2,56 @@ import { randomUUID } from 'node:crypto';
 const uid = () => randomUUID();
 const headingPattern = /^\s*(\d+(?:\.\d+){1,6})\.?\s+([A-ZÁÉÍÓÚÜÑ¿][^\n]{2,})$/;
 const situationHeading = /^\s*(Situaci[oó]n de aprendizaje\s+(\d+):\s*.*)$/i;
-const bulletPattern = /^\s*(?:[•▪−–]|-(?!\d)|[a-zñ]\)|[a-zñ]\.\s|o\s)\s*(.*)$/i;
-const strip = (line) => line.text.trim();
+const bulletPattern = /^\s*(?:[•▪·◦‣∙○−–]|-(?!\d)|[a-zñ]\)|[a-zñ]\.\s|o\s)\s*(.*)$/i;
+// Qualification rows are frequently spaced like a two-column PDF table, but
+// semantically they are one ordered list item (RA code + score).
+const gradingPattern = /^\s*[•▪−–*-]?\s*(?:(?:calificación|evaluación|nota|puntuación)\s+)?RA\s*\d+\s*(?:->|→|=>|:|-|–)\s*\d+(?:[.,]\d+)?\s*%?\s*$/i;
+const orderedPattern = /^\s*\d+[.)]\s+(.+)$/;
+const listItemPattern = (value) => bulletPattern.test(value) || gradingPattern.test(value) || orderedPattern.test(value);
+const listItemText = (value) => {
+    const bullet = value.match(bulletPattern);
+    if (bullet) {
+        return bullet[1];
+    }
+    const ordered = value.match(orderedPattern);
+    if (ordered) {
+        return ordered[1];
+    }
+    return value.replace(/^\s*[•▪·◦‣∙○−–*-]?\s*/, '').trim();
+};
+const bulletOnly = (value) => String(value || '').replace(/^\s*[•▪·◦‣∙○−–*-]\s*/, '').trim() === '';
+const strip = (line) => line.text.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
 const fold = (s) => s
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
-export function parseBlocks(lines, { structuredTable = false } = {}) {
+export function parseBlocks(lines, { structuredTable = false, tables = [] } = {}) {
     const blocks = [];
+    const emittedTables = new Set();
     let current;
     let tableHasStarted = false;
+    // Poppler can put a vertically centred percentage on its own physical line.
+    // Detect the surrounding table before bullet/list classification.
+    const percentageLines = new Set();
+    const percentage = /(?:^|\s)(\d+(?:[.,]\d+)?\s*%)\s*$/;
+    const adjacent = (left, right) => left && right && left.page === right.page &&
+        Number(right.id.match(/-l(\d+)$/)?.[1]) - Number(left.id.match(/-l(\d+)$/)?.[1]) <= 2;
+    lines.forEach((line, index) => {
+        if (!percentage.test(line.text) || !/\s{2,}\d/.test(line.text)) {
+            return;
+        }
+        let start = index;
+        let end = index;
+        while (start > 0 && adjacent(lines[start - 1], lines[start])) {
+            start--;
+        }
+        while (end + 1 < lines.length && adjacent(lines[end], lines[end + 1])) {
+            end++;
+        }
+        for (let position = start; position <= end; position++) {
+            percentageLines.add(position);
+        }
+    });
     const flush = () => {
         if (!current) {
             return;
@@ -29,8 +69,26 @@ export function parseBlocks(lines, { structuredTable = false } = {}) {
             const rows = current.lines.map((l) => l.text
                 .trim()
                 .split(/\s{2,}|\t+/)
-                .map((s) => s.trim()));
+                .map((s) => s.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim()));
             const width = Math.max(2, ...rows.map((r) => r.length));
+            const bulletOnlyFirstColumn = width === 2 && rows.length > 0 && rows.every((row) => {
+                return bulletOnly(row[0]) && Boolean(row[1]);
+            });
+            if (bulletOnlyFirstColumn) {
+                base.type = 'list';
+                base.items = rows.map((row) => row[1]);
+                blocks.push(base);
+                current = undefined;
+                return;
+            }
+            const singleTextColumn = width === 2 && rows.length > 0 && rows.every((row) => !String(row[1] || '').trim());
+            if (singleTextColumn) {
+                base.type = 'text';
+                base.text = rows.map((row) => row[0] || '').join('\n');
+                blocks.push(base);
+                current = undefined;
+                return;
+            }
             base.columns = Array.from({ length: width }, (_, i) => `Columna ${i + 1}`);
             base.rows = rows.map((r) => [...r, ...Array(width - r.length).fill('')]);
             if (width === 2) {
@@ -47,11 +105,47 @@ export function parseBlocks(lines, { structuredTable = false } = {}) {
                     return textStart >= rightColumnStart ? ['', row[0]] : [row[0], ''];
                 });
             }
+            // Join wrapped two-column rows while retaining the literal criterion
+            // marker and every source reference. Headers remain ordinary rows.
+            if (width === 2 && current.lines.some((line) => percentage.test(line.text))) {
+                const joined = [];
+                let pendingRow = null;
+                const finishRow = () => {
+                    if (pendingRow) {
+                        joined.push(pendingRow);
+                    }
+                    pendingRow = null;
+                };
+                base.rows.forEach((row) => {
+                    const [text, value] = row;
+                    const isPercentage = /^\d+(?:[.,]\d+)?\s*%$/.test(value);
+                    const isHeader = value && !isPercentage;
+                    const startsCriterion = bulletPattern.test(text);
+                    if (isHeader) {
+                        finishRow();
+                        joined.push(row);
+                    } else if (startsCriterion || (isPercentage && pendingRow?.[1])) {
+                        finishRow();
+                        pendingRow = [text, value];
+                    } else {
+                        if (!pendingRow) {
+                            pendingRow = ['', ''];
+                        }
+                        if (text) {
+                            pendingRow[0] = [pendingRow[0], text].filter(Boolean).join(' ');
+                        }
+                        if (value) {
+                            pendingRow[1] = value;
+                        }
+                    }
+                });
+                finishRow();
+                base.rows = joined;
+            }
         } else if (current.type === 'list') {
             for (const line of current.lines) {
-                const m = line.text.match(bulletPattern);
-                if (m) {
-                    base.items.push(m[1]);
+                if (listItemPattern(line.text)) {
+                    base.items.push(listItemText(line.text));
                 } else if (base.items.length) {
                     base.items[base.items.length - 1] += '\n' + strip(line);
                 } else {
@@ -64,14 +158,40 @@ export function parseBlocks(lines, { structuredTable = false } = {}) {
         blocks.push(base);
         current = undefined;
     };
-    for (const line of lines) {
-        const table = /\S\s{2,}\S/.test(line.text.trim()) || /\t/.test(line.text);
+    for (const [lineIndex, line] of lines.entries()) {
+        if (line.tableId) {
+            const originalTable = tables.find((candidate) => candidate.id === line.tableId);
+            if (originalTable) {
+                flush();
+                tableHasStarted = false;
+                if (!emittedTables.has(originalTable.id)) {
+                    blocks.push({
+                        id: uid(),
+                        type: 'table',
+                        text: '',
+                        items: [],
+                        columns: originalTable.columnWidths.map((_, index) => `Columna ${index + 1}`),
+                        rows: structuredClone(originalTable.rows),
+                        cellSpans: structuredClone(originalTable.cellSpans),
+                        columnWidths: [...originalTable.columnWidths],
+                        sourceRefs: [...originalTable.sourceRefs],
+                    });
+                    emittedTables.add(originalTable.id);
+                }
+                continue;
+            }
+        }
+        const isGradingLine = gradingPattern.test(line.text);
+        const table = !isGradingLine && (/\S\s{2,}\S/.test(line.text.trim()) || /\t/.test(line.text));
         let type = table
             ? 'table'
-            : bulletPattern.test(line.text)
+            : listItemPattern(line.text)
                 ? 'list'
                 : 'text';
-        if (structuredTable && (table || tableHasStarted)) {
+        if (percentageLines.has(lineIndex)) {
+            type = 'table';
+        }
+        if (structuredTable && (table || tableHasStarted || percentageLines.has(lineIndex))) {
             type = 'table';
             tableHasStarted = true;
         }
@@ -86,6 +206,16 @@ export function parseBlocks(lines, { structuredTable = false } = {}) {
             /^\s{3,}\S/.test(line.text)) {
             type = 'list';
         }
+        // A learning-outcome heading begins a new physical table. Its
+        // criteria heading belongs to that same table and must stay inside it.
+        const startsLearningTable = /^\s*Resultado de aprendizaje\b/i.test(line.text) && table;
+        const previousLine = lines[lineIndex - 1];
+        const separatedOnPage = previousLine?.page === line.page &&
+            Number(line.id.match(/-l(\d+)$/)?.[1]) - Number(previousLine.id.match(/-l(\d+)$/)?.[1]) > 2;
+        if (current?.type === 'table' && type === 'table' &&
+            (startsLearningTable || (!structuredTable && separatedOnPage))) {
+            flush();
+        }
         if (current?.type !== type) {
             flush();
         }
@@ -99,6 +229,50 @@ export function parseBlocks(lines, { structuredTable = false } = {}) {
     }
     flush();
     return blocks;
+}
+
+// Repairs documents imported by older versions where a bullet column was
+// mistaken for a table. It is safe to run on every read and keeps revisions
+// compatible because ids and source references stay unchanged.
+export function repairMisclassifiedLists(program) {
+    return {
+        ...program,
+        sections: program.sections.map((section) => ({
+            ...section,
+            blocks: section.blocks.map((block) => {
+                const normalized = { ...block };
+                if (normalized.type !== 'table' || normalized.columns.length !== 2 || !normalized.rows.length || normalized.cellSpans?.length) {
+                    return normalized;
+                }
+                const list = normalized.rows.every((row) => {
+                    return bulletOnly(row[0]) && Boolean(String(row[1] || '').trim());
+                });
+                if (list) {
+                    return {
+                        ...normalized,
+                        type: 'list',
+                        text: '',
+                        items: normalized.rows.map((row) => String(row[1]).trim()),
+                        columns: [],
+                        rows: [],
+                        cellSpans: undefined,
+                        columnWidths: undefined,
+                    };
+                }
+                const textOnly = normalized.rows.every((row) => !String(row[1] || '').trim());
+                return textOnly ? {
+                    ...normalized,
+                    type: 'text',
+                    text: normalized.rows.map((row) => String(row[0] || '').trim()).join('\n'),
+                    items: [],
+                    columns: [],
+                    rows: [],
+                    cellSpans: undefined,
+                    columnWidths: undefined,
+                } : normalized;
+            }),
+        })),
+    };
 }
 export function parseSource(source) {
     const programs = [];
@@ -131,9 +305,12 @@ export function parseSource(source) {
         }
         const title = fold(section.title);
         const structuredTable = /identificacion|competencias y objetivos|resultados de aprendizaje y criterios|estrategias metodologicas|ponderaciones|situacion.*aprendizaje/.test(title);
-        section.blocks = parseBlocks(pending, { structuredTable });
+        section.blocks = parseBlocks(pending, {
+            structuredTable,
+            tables: source.pages.flatMap((page) => page.tables || []),
+        });
         pending = [];
-        if (section.blocks.some((b) => b.type === 'table')) {
+        if (section.blocks.some((b) => b.type === 'table' && !b.cellSpans)) {
             section.warnings.push('Tabla reconstruida desde el documento: revisa las celdas y une las filas que sean continuaciones.');
         }
         program.sections.push(section);
@@ -163,8 +340,8 @@ export function parseSource(source) {
     const lines = source.pages.flatMap((p) => p.lines.filter((l) => !l.footer));
     for (let index = 0; index < lines.length; index++) {
         const line = lines[index];
-        const match = line.text.match(headingPattern);
-        const situation = line.text.match(situationHeading);
+        const match = !line.tableId && line.text.match(headingPattern);
+        const situation = !line.tableId && line.text.match(situationHeading);
         if (situation && program) {
             finishSection();
             let title = situation[1].trim();

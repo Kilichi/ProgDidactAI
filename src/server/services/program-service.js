@@ -4,8 +4,11 @@ import { AppError, validateProgram } from '../domain/schemas.js';
 export const revisionSchema = z.object({ revision: z.number().int().positive() });
 export async function validateSourceReferences(program, dao) {
     const sources = new Map();
+    const referenceSets = new Map();
     for (const sourceId of program.sourceIds) {
-        sources.set(sourceId, await dao.getSource(sourceId));
+        const source = await dao.getSource(sourceId);
+        sources.set(sourceId, source);
+        referenceSets.set(sourceId, new Set(source.pages.flatMap((page) => page.lines.map((line) => line.id))));
     }
     for (const section of program.sections) {
         const references = [...section.headingRefs, ...section.blocks.flatMap((block) => block.sourceRefs)];
@@ -19,7 +22,7 @@ export async function validateSourceReferences(program, dao) {
         if (!source) {
             throw new AppError('La sección debe estar asociada a un documento original del módulo.');
         }
-        const validReferences = new Set(source.pages.flatMap((page) => page.lines.map((line) => line.id)));
+        const validReferences = referenceSets.get(section.sourceId);
         if (references.some((reference) => !validReferences.has(reference))) {
             throw new AppError('La sección contiene referencias de origen inválidas.');
         }
@@ -30,21 +33,25 @@ export async function validateSourceReferences(program, dao) {
 }
 export async function createProgram(input, context) {
     const program = validateProgram(input);
-    await validateSourceReferences(program, context.dao);
     const now = new Date().toISOString();
-    return context.mutate(() => context.dao.insertProgram({
-        ...program,
-        id: randomUUID(),
-        revision: 1,
-        createdAt: now,
-        updatedAt: now,
-    }));
+    return context.mutate(async () => {
+        await validateSourceReferences(program, context.dao);
+        return context.dao.insertProgram({
+            ...program,
+            id: randomUUID(),
+            revision: 1,
+            createdAt: now,
+            updatedAt: now,
+        });
+    });
 }
 export async function saveProgram(programId, input, context) {
     const { revision } = revisionSchema.parse(input);
     const program = validateProgram(input);
-    await validateSourceReferences(program, context.dao);
-    return context.mutate(() => context.dao.updateProgram(programId, revision, program));
+    return context.mutate(async () => {
+        await validateSourceReferences(program, context.dao);
+        return context.dao.updateProgram(programId, revision, program);
+    });
 }
 export async function restoreProgram(programId, input, context) {
     const { revision, targetRevision } = revisionSchema.extend({ targetRevision: z.number().int().positive() }).parse(input);

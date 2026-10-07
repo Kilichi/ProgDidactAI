@@ -77,7 +77,7 @@ async function processImport(job, buffer, storedPath, sourceId, extension, provi
         });
         job.status = 'done';
         job.progress = 100;
-        job.message = `${programs.length} módulos listos para revisar`;
+        job.message = `${source.pages.length} páginas listas para editar`;
         job.sourceId = source.id;
         job.coverage = {
             total: sourceCoverage(programs, source).total,

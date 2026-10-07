@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { promisify, isDeepStrictEqual } from 'node:util';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { DOMParser } from '@xmldom/xmldom';
 import { AppError } from '../domain/schemas.js';
-import { parseSource } from './document-parser.js';
+import { parseSource, repairMisclassifiedLists } from './document-parser.js';
 
 const execute = promisify(execFile);
 const words = (value) => String(value).replace(/\*\*/g, '').trim().split(/\s+/u).filter(Boolean);
@@ -107,7 +107,7 @@ function mapSourceLines(source, pages) {
     return references;
 }
 
-function replaceText(references, oldText, newText, mapping, label) {
+function replaceText(references, oldText, newText, mapping, label, location) {
     if (normalized(oldText) === normalized(newText)) {
         return;
     }
@@ -150,6 +150,7 @@ function replaceText(references, oldText, newText, mapping, label) {
         tokens.splice(start ? anchor.index + 1 : anchor.index, 0, ...newWords.slice(start, newEnd));
         anchor.node.text = tokens.join(' ');
         anchor.node.changed = true;
+        anchor.node.location = location;
         return;
     }
     const byNode = new Map();
@@ -168,72 +169,186 @@ function replaceText(references, oldText, newText, mapping, label) {
         tokens.splice(indexes[0], indexes.length, ...replacements.slice(offset, boundary));
         node.text = tokens.join(' ');
         node.changed = true;
+        node.location = location;
         offset = boundary;
     }
 }
 
 export function applyOriginalEdits(source, pages, programs) {
-    const mapping = mapSourceLines(source, pages);
-    const baseline = parseSource(source);
-    const baselineSections = baseline.flatMap((program) => program.sections);
-    const originalBlocks = baselineSections.flatMap((section) => section.blocks);
-    const seen = new Set();
-    for (const program of programs) {
-        const baselineModule = baseline.find((candidate) => candidate.sections.some((section) => program.sections.some((current) => current.headingRefs.length && signature(current.headingRefs) === signature(section.headingRefs))));
-        if (baselineModule) {
-            const originalOrder = baselineModule.sections.map((section) => signature(section.headingRefs) || signature(section.blocks.flatMap((block) => block.sourceRefs)));
-            const currentOrder = program.sections.filter((section) => section.sourceId === source.id).map((section) => signature(section.headingRefs) || signature(section.blocks.flatMap((block) => block.sourceRefs)));
-            if (JSON.stringify(originalOrder) !== JSON.stringify(currentOrder)) {
-                throw new AppError('Se han añadido, eliminado o reordenado apartados. El modo original conserva sus posiciones; utiliza la plantilla institucional para cambiar la estructura.');
-            }
-        }
-        for (const section of program.sections.filter((candidate) => candidate.sourceId === source.id)) {
-            const originalSection = baselineSections.find((candidate) => signature(candidate.headingRefs) === signature(section.headingRefs) && candidate.pageStart === section.pageStart);
-            if (!originalSection) {
-                throw new AppError('Un apartado nuevo o reasignado no tiene una posición en el original. Usa la plantilla institucional para cambiar la estructura.');
-            }
-            if (JSON.stringify(originalSection.blocks.map((block) => signature(block.sourceRefs))) !== JSON.stringify(section.blocks.map((block) => signature(block.sourceRefs)))) {
-                throw new AppError('Se ha modificado la estructura de los bloques. Utiliza la plantilla institucional para añadir, eliminar, unir o reordenar contenido.');
-            }
-            if (section.headingRefs.length) {
-                const oldHeading = `${originalSection.originalCode} ${originalSection.title}`.trim();
-                const newHeading = `${section.originalCode ? section.code : ''} ${section.title}`.trim();
-                replaceText(section.headingRefs, oldHeading, newHeading, mapping, section.title);
-                const moduleBaseline = baseline.find((candidate) => candidate.sections.includes(originalSection));
-                if (moduleBaseline?.module === originalSection.title && program.module !== moduleBaseline.module && section.title === originalSection.title) {
-                    replaceText(section.headingRefs, oldHeading, `${section.code} ${program.module}`, mapping, program.module);
+    let location;
+    try {
+        const mapping = mapSourceLines(source, pages);
+        const baseline = parseSource(source);
+        const baselineSections = baseline.flatMap((program) => program.sections);
+        const originalBlocks = baselineSections.flatMap((section) => section.blocks);
+        const seen = new Set();
+        for (const program of programs) {
+            const baselineModule = baseline.find((candidate) => candidate.sections.some((section) => program.sections.some((current) => current.headingRefs.length && signature(current.headingRefs) === signature(section.headingRefs))));
+            if (baselineModule) {
+                const originalOrder = baselineModule.sections.map((section) => signature(section.headingRefs) || signature(section.blocks.flatMap((block) => block.sourceRefs)));
+                const currentOrder = program.sections.filter((section) => section.sourceId === source.id).map((section) => signature(section.headingRefs) || signature(section.blocks.flatMap((block) => block.sourceRefs)));
+                if (JSON.stringify(originalOrder) !== JSON.stringify(currentOrder)) {
+                    throw new AppError('Se han añadido, eliminado o reordenado apartados. El modo original conserva sus posiciones; utiliza la plantilla institucional para cambiar la estructura.');
                 }
             }
-            for (const block of section.blocks) {
-                const originalBlock = originalBlocks.find((candidate) => signature(candidate.sourceRefs) === signature(block.sourceRefs));
-                if (!originalBlock || seen.has(signature(block.sourceRefs))) {
-                    throw new AppError('Hay bloques nuevos, unidos o sin posición única en el original. Usa la plantilla institucional para exportar esa estructura.');
+            for (const section of program.sections.filter((candidate) => candidate.sourceId === source.id)) {
+                location = {
+                    programId: program.id,
+                    fileId: source.id,
+                    sectionId: section.id,
+                    sectionTitle: section.title,
+                    page: section.pageStart,
+                    field: 'title',
+                };
+                const originalSection = baselineSections.find((candidate) => signature(candidate.headingRefs) === signature(section.headingRefs) && candidate.pageStart === section.pageStart);
+                if (!originalSection) {
+                    throw new AppError('Un apartado nuevo o reasignado no tiene una posición en el original. Usa la plantilla institucional para cambiar la estructura.');
                 }
-                seen.add(signature(block.sourceRefs));
-                if (block.type === 'table' && originalBlock.type === 'table' && normalized(block.columns.join(' ')) !== normalized(originalBlock.columns.join(' '))) {
-                    throw new AppError('Los nombres de columnas del editor no son cabeceras del original. Edita la fila original de la tabla o utiliza la plantilla institucional.');
+                if (JSON.stringify(originalSection.blocks.map((block) => signature(block.sourceRefs))) !== JSON.stringify(section.blocks.map((block) => signature(block.sourceRefs)))) {
+                    throw new AppError('Se ha modificado la estructura de los bloques. Utiliza la plantilla institucional para añadir, eliminar, unir o reordenar contenido.');
                 }
-                replaceText(block.sourceRefs, blockText(originalBlock), blockText(block), mapping, section.title);
-            }
-            if (originalSection.blocks.some((block) => !section.blocks.some((candidate) => signature(candidate.sourceRefs) === signature(block.sourceRefs)))) {
-                throw new AppError('Se han eliminado bloques del original. Para mantener sus páginas, conserva la estructura y edita su contenido.');
-            }
-        }
-        const firstOriginal = baseline.find((candidate) => candidate.sections.some((section) => program.sections.some((current) => current.headingRefs.length && signature(current.headingRefs) === signature(section.headingRefs))));
-        if (firstOriginal) {
-            const identity = firstOriginal.sections.find((section) => /identificaci[oó]n/i.test(section.title));
-            const refs = identity?.blocks.flatMap((block) => block.sourceRefs) || [];
-            for (const field of ['code', 'course', 'teacher']) {
-                if (program[field] !== firstOriginal[field]) {
-                    if (!firstOriginal[field] || !refs.length) {
-                        throw new AppError(`El campo ${field} no tiene una posición identificada en el original. Edita la tabla de identificación o utiliza la plantilla institucional.`);
+                if (section.headingRefs.length) {
+                    const oldHeading = `${originalSection.originalCode} ${originalSection.title}`.trim();
+                    const newHeading = `${section.originalCode ? section.code : ''} ${section.title}`.trim();
+                    replaceText(section.headingRefs, oldHeading, newHeading, mapping, section.title, location);
+                    const moduleBaseline = baseline.find((candidate) => candidate.sections.includes(originalSection));
+                    if (moduleBaseline?.module === originalSection.title && program.module !== moduleBaseline.module && section.title === originalSection.title) {
+                        replaceText(section.headingRefs, oldHeading, `${section.code} ${program.module}`, mapping, program.module, location);
                     }
-                    replaceText(refs, firstOriginal[field], program[field], mapping, field);
+                }
+                if (!section.headingRefs.length && section.title.trim() && section.title !== originalSection.title) {
+                    const references = section.blocks.flatMap((block) => block.sourceRefs);
+                    const first = references.map((reference) => mapping.get(reference)).find(Boolean);
+                    if (first) {
+                        const anchor = [...first.texts].sort((a, b) => a.top - b.top || a.left - b.left)[0];
+                        const top = anchor.top - 22;
+                        if (top < 12 || first.page.texts.some((text) => text.text.trim() &&
+                        text.top < top + 16 && text.top + text.height > top)) {
+                            throw new AppError('El título añadido no tiene espacio encima del contenido original. Usa la plantilla institucional para exportarlo con espacio nuevo.');
+                        }
+                        first.page.texts.push({
+                            id: `title-${section.id}`,
+                            page: first.page.number,
+                            text: section.title.trim(),
+                            originalText: '',
+                            insert: true,
+                            changed: true,
+                            top,
+                            left: anchor.left,
+                            width: 0,
+                            height: 16,
+                            maxWidth: first.page.width - anchor.left - 36,
+                            font: {
+                                ...anchor.font,
+                                size: 12,
+                                color: '#000000',
+                            },
+                        });
+                    }
+                }
+                for (const block of section.blocks) {
+                    location = {
+                        ...location,
+                        blockId: block.id,
+                        field: 'text',
+                    };
+                    let originalBlock = originalBlocks.find((candidate) => signature(candidate.sourceRefs) === signature(block.sourceRefs));
+                    if (!originalBlock || seen.has(signature(block.sourceRefs))) {
+                        throw new AppError('Hay bloques nuevos, unidos o sin posición única en el original. Usa la plantilla institucional para exportar esa estructura.');
+                    }
+                    seen.add(signature(block.sourceRefs));
+                    if (originalBlock.type !== block.type) {
+                        const repaired = repairMisclassifiedLists({ sections: [{ blocks: [originalBlock] }] }).sections[0].blocks[0];
+                        if (repaired.type === block.type) {
+                            originalBlock = repaired;
+                        }
+                    }
+                    if (block.type === 'table' && originalBlock.type === 'table' && normalized(block.columns.join(' ')) !== normalized(originalBlock.columns.join(' '))) {
+                        throw new AppError('Los nombres de columnas del editor no son cabeceras del original. Edita la fila original de la tabla o utiliza la plantilla institucional.');
+                    }
+                    if (originalBlock.cellSpans && block.type === 'table') {
+                        if (!isDeepStrictEqual(block.cellSpans, originalBlock.cellSpans) ||
+                        block.rows.length !== originalBlock.rows.length ||
+                        block.columns.length !== originalBlock.columns.length) {
+                            throw new AppError('Se ha modificado la estructura de la tabla. Utiliza la plantilla institucional para cambiar sus filas o celdas combinadas.');
+                        }
+                        for (const cell of originalBlock.cellSpans) {
+                            location = {
+                                ...location,
+                                field: 'cell',
+                                row: cell.row,
+                                column: cell.column,
+                            };
+                            const oldText = originalBlock.rows[cell.row][cell.column];
+                            const newText = block.rows[cell.row][cell.column];
+                            if (normalized(oldText) === normalized(newText)) {
+                                continue;
+                            }
+                            if (cell.bbox) {
+                                const pageNumber = Number(block.sourceRefs[0]?.match(/^p(\d+)-/)?.[1]) || section.pageStart;
+                                const referencePage = pages.find((candidate) => candidate.number === pageNumber);
+                                const [left, top, right, bottom] = cell.bbox;
+                                const anchor = referencePage.texts.find((text) => text.left >= left - 1 &&
+                                text.left < right && text.top >= top - 1 && text.top < bottom);
+                                referencePage.texts.push({
+                                    id: `cell-${block.id}-${cell.row}-${cell.column}`,
+                                    text: newText,
+                                    originalText: oldText,
+                                    region: true,
+                                    changed: true,
+                                    top,
+                                    left,
+                                    width: right - left,
+                                    height: bottom - top,
+                                    maxWidth: right - left - 6,
+                                    font: anchor?.font || {
+                                        size: 9,
+                                        color: '#000000',
+                                        family: 'Arial',
+                                    },
+                                    location: {
+                                        ...location,
+                                        page: referencePage.number,
+                                    },
+                                });
+                            } else {
+                                replaceText(block.sourceRefs, oldText, newText, mapping, section.title, location);
+                            }
+                        }
+                    } else {
+                        replaceText(block.sourceRefs, blockText(originalBlock), blockText(block), mapping, section.title, location);
+                    }
+                }
+                if (originalSection.blocks.some((block) => !section.blocks.some((candidate) => signature(candidate.sourceRefs) === signature(block.sourceRefs)))) {
+                    throw new AppError('Se han eliminado bloques del original. Para mantener sus páginas, conserva la estructura y edita su contenido.');
+                }
+            }
+            const firstOriginal = baseline.find((candidate) => candidate.sections.some((section) => program.sections.some((current) => current.headingRefs.length && signature(current.headingRefs) === signature(section.headingRefs))));
+            if (firstOriginal) {
+                const identity = firstOriginal.sections.find((section) => /identificaci[oó]n/i.test(section.title));
+                const refs = identity?.blocks.flatMap((block) => block.sourceRefs) || [];
+                for (const field of ['code', 'course', 'teacher']) {
+                    if (program[field] !== firstOriginal[field]) {
+                        if (!firstOriginal[field] || !refs.length) {
+                            throw new AppError(`El campo ${field} no tiene una posición identificada en el original. Edita la tabla de identificación o utiliza la plantilla institucional.`);
+                        }
+                        replaceText(refs, firstOriginal[field], program[field], mapping, field, location);
+                    }
                 }
             }
         }
+        return pages;
+    } catch (error) {
+        if (error instanceof AppError && location) {
+            const position = location.field === 'cell' ? ` · fila ${location.row + 1}, columna ${location.column + 1}` : '';
+            throw new AppError(`Página ${location.page} · ${location.sectionTitle || 'Apartado sin título'}${position}: ${error.message}`,
+                error.status, {
+                    location,
+                    solution: 'Abre la edición señalada para corregirla. Si has cambiado filas, columnas o el orden del contenido, exporta con la plantilla institucional para redistribuir el espacio.',
+                });
+        }
+        throw error;
     }
-    return pages;
 }
 
 export async function prepareOriginalDocument(programs, sources, config) {
@@ -324,12 +439,15 @@ export async function exportOriginalPDF(document, config) {
             throw error;
         }
         let message;
+        let details;
         try {
-            message = JSON.parse(error.stdout).error;
+            const failure = JSON.parse(error.stdout);
+            message = failure.error;
+            details = failure.details;
         } catch {
             message = 'Para exportar conservando el diseño original instala Python y pikepdf, o utiliza Docker.';
         }
-        throw new AppError(message || 'No se pudo modificar el PDF original conservando sus páginas.');
+        throw new AppError(message || 'No se pudo modificar el PDF original conservando sus páginas.', 400, details);
     } finally {
         await rm(directory, {
             recursive: true,

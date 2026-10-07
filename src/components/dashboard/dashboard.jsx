@@ -1,438 +1,383 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useResource } from '@/hooks/use-resource';
 import { apiRequest, formatDate } from '@/lib/api';
 import { Icon } from '@/components/ui/icon';
-import { ErrorNotice, LoadingState, StatusBadge } from '@/components/ui/feedback';
-import { useWorkspace } from '@/components/layout/workspace-shell';
+import { ErrorNotice, LoadingState } from '@/components/ui/feedback';
+
 export function Dashboard() {
-    const { data: programs, loading, error, reload } = useResource('/api/programs');
-    const { data: health } = useResource('/api/health');
+    const { data: files, loading, error, reload } = useResource('/api/files');
+    const { data: programs } = useResource('/api/programs');
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState('all');
-    const [actionError, setActionError] = useState('');
-    const [creating, setCreating] = useState(false);
-    const { notify } = useWorkspace();
-    const router = useRouter();
-    const recentProgram = [...(programs || [])].sort((first, second) => new Date(second.updatedAt) - new Date(first.updatedAt))[0];
-    const reviewedCount = programs?.filter((program) => program.status === 'reviewed').length || 0;
-    const sectionCount = programs?.reduce((count, program) => count + program.sections.length, 0) || 0;
-    const filteredPrograms = programs?.filter((program) => program.module.toLowerCase().includes(search.toLowerCase()) && (filter === 'all' || program.status === filter)) || [];
-    async function createBlankProgram() {
-        const name = window.prompt('Nombre del nuevo módulo:');
-        if (!name?.trim()) {
-            return;
-        }
-        setCreating(true);
-        setActionError('');
-        try {
-            const program = await apiRequest('/api/programs', {
-                method: 'POST',
-                body: {
-                    module: name.trim(),
-                    code: '',
-                    course: '',
-                    teacher: '',
-                    status: 'draft',
-                    sections: [],
-                    sourceIds: [],
-                    warnings: [],
-                },
-            });
-            router.push(`/programaciones/${program.id}`);
-        } catch (failure) {
-            setActionError(failure.message);
-        } finally {
-            setCreating(false);
-        }
+    const [sort, setSort] = useState('recent');
+    const [deleting, setDeleting] = useState('');
+    const [actionError, setActionError] = useState(null);
+    const sorted = [...(files || [])].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    const latest = sorted[0];
+    const reviewed = sorted.filter((file) => file.status === 'reviewed').length;
+    const filtered = sorted.filter((file) => file.filename.toLocaleLowerCase('es').includes(search.toLocaleLowerCase('es')) && (filter === 'all' || (filter === 'reviewed' ? file.status === 'reviewed' : file.status !== 'reviewed')));
+    if (sort === 'name') {
+        filtered.sort((a, b) => a.filename.localeCompare(b.filename, 'es'));
     }
-    async function deleteProgram(program) {
-        if (!window.confirm(`¿Eliminar «${program.module}» y su histórico? El documento original se conservará.`)) {
+    const manual = (programs || []).filter((program) => !program.sourceIds.length);
+    async function removeFile(file) {
+        if (!window.confirm(`¿Eliminar «${file.filename}» y sus programaciones? Esta acción no se puede deshacer.`)) {
             return;
         }
-        setActionError('');
+        setDeleting(file.id);
+        setActionError(null);
         try {
-            await apiRequest(`/api/programs/${program.id}`, {
+            await apiRequest(`/api/files/${file.id}`, {
                 method: 'DELETE',
-                body: { revision: program.revision },
+                body: { confirm: true },
             });
             await reload();
-            notify('Programación eliminada.');
-        } catch (failure) {
-            setActionError(failure.message);
+        } catch (error) {
+            setActionError(error);
+        } finally {
+            setDeleting('');
         }
     }
-    return (
-        <>
-            <section className="page-heading">
-                <div>
-                    <p className="eyebrow">
-                        UN NUEVO CURSO, TODO EN ORDEN
-                    </p>
-                    <h1>
-                        Mis programaciones
-                        <span className="heading-dot">
-                            .
-                        </span>
-                    </h1>
-                    <p>
-                        Un espacio para actualizar, revisar y unificar los módulos de tu ciclo.
-                    </p>
-                </div>
-                <Link
-                    className="button button-primary"
-                    href="/importar"
-                >
-                    <Icon
-                        name="plus"
-                        size={18}
-                    />
-                    Nueva importación
-                </Link>
-            </section>
-            <section
-                className="welcome-card"
-                aria-labelledby="welcome-title"
-            >
-                <div>
-                    <span className="badge badge-blue">
-                        <Icon
-                            name="sparkles"
-                            size={13}
-                        />
-                        TU ESPACIO DOCENTE
-                    </span>
-                    <h2 id="welcome-title">
-                        Menos papeleo.
-                        <br />
-                        Más tiempo para enseñar.
-                    </h2>
-                    <p>
-                        Tus documentos, tus cambios, tu próximo curso. Importa, edita y prepara tus programaciones desde un mismo lugar.
-                    </p>
-                    <Link
-                        className="button button-dark"
-                        href="/importar"
-                    >
-                        Comenzar asistente
-                        <Icon
-                            name="arrow"
-                            size={18}
-                        />
-                    </Link>
-                    {recentProgram && <Link
-                        className="welcome-continue"
-                        href={`/programaciones/${recentProgram.id}`}
-                    >
-                        Continuar editando
-                        <Icon
-                            name="arrow"
-                            size={16} />
-                    </Link>}
-                    <span className="welcome-note">
-                        PDF y Word · Revisión a tu ritmo
-                    </span>
-                </div>
-                <div
-                    className="dashboard-preview"
-                    aria-hidden="true">
-                    <div className="preview-orbit" />
-                    <div className="preview-window">
-                        <div className="preview-window-toolbar">
-                            <span className="preview-window-dots">
-                                <i />
-                                <i />
-                                <i />
-                            </span>
-                            <span>
-                                Tu programación
-                            </span>
-                            <Icon
-                                name="file"
-                                size={15} />
-                        </div>
-                        <div className="preview-window-body">
-                            <div className="preview-mini-sidebar">
-                                <Icon
-                                    name="grid"
-                                    size={16} />
-                                <Icon
-                                    name="file"
-                                    size={16} />
-                                <Icon
-                                    name="check"
-                                    size={16} />
-                            </div>
-                            <div className="preview-document">
-                                <span className="preview-document-label">
-                                    PROGRAMACIÓN DIDÁCTICA
-                                </span>
-                                <h3>
-                                    {recentProgram?.module || 'Un nuevo curso, bien organizado.'}
-                                </h3>
-                                <div className="preview-document-meta">
-                                    <span>
-                                        {recentProgram?.code || 'DAW'}
-                                    </span>
-                                    <span>
-                                        Curso 2026 / 2027
-                                    </span>
-                                </div>
-                                <div className="preview-document-heading">
-                                    <span>
-                                        01
-                                    </span>
-                                    {recentProgram?.sections[0]?.title || 'Tu contenido, listo para editar'}
-                                </div>
-                                <div className="preview-document-lines">
-                                    <i />
-                                    <i />
-                                    <i />
-                                </div>
-                                <div className="preview-document-table">
-                                    <span>
-                                        Contenido
-                                    </span>
-                                    <span>
-                                        Revisión
-                                    </span>
-                                    <span>
-                                        Textos y apartados
-                                    </span>
-                                    <span>
-                                        <Icon
-                                            name="check"
-                                            size={13} />
-                                    </span>
-                                    <span>
-                                        Listas y tablas
-                                    </span>
-                                    <span>
-                                        <Icon
-                                            name="check"
-                                            size={13} />
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="preview-floating-badge">
-                        <span>
-                            <Icon
-                                name="check"
-                                size={18} />
-                        </span>
-                        <div>
-                            <strong>
-                                El original, siempre contigo
-                            </strong>
-                            <small>
-                                Edita sin perder la referencia
-                            </small>
-                        </div>
-                    </div>
-                    <div className="preview-file-badge">
-                        <Icon
-                            name="file"
-                            size={17} />
-                        <span>
-                            PDF + Word
-                        </span>
-                    </div>
-                </div>
-            </section>
-            <section
-                className="stats-grid"
-                aria-label="Resumen de programaciones"
-            >
-                <article className="stat-card">
-                    <span className="stat-icon blue">
-                        <Icon name="file" />
-                    </span>
-                    <div>
-                        <strong>
-                            {programs?.length || 0}
-                        </strong>
-                        <p>
-                            Módulos importados
-                        </p>
-                    </div>
-                </article>
-                <article className="stat-card">
-                    <span className="stat-icon green">
-                        <Icon name="check" />
-                    </span>
-                    <div>
-                        <strong>
-                            {reviewedCount}
-                        </strong>
-                        <p>
-                            Listos para exportar
-                        </p>
-                    </div>
-                </article>
-                <article className="stat-card">
-                    <span className="stat-icon purple">
-                        <Icon name="grid" />
-                    </span>
-                    <div>
-                        <strong>
-                            {sectionCount}
-                        </strong>
-                        <p>
-                            Secciones organizadas
-                        </p>
-                    </div>
-                </article>
-            </section>
-            <section
-                className="programs-panel"
-                aria-labelledby="programs-title"
-            >
-                <div className="panel-heading">
-                    <div>
-                        <h2 id="programs-title">
-                            Tus módulos
-                            <span className="count-pill">
-                                {programs?.length || 0}
-                            </span>
-                        </h2>
-                        <p>
-                            Continúa donde lo dejaste.
-                        </p>
-                    </div>
-                    <button
-                        className="button button-secondary button-small"
-                        onClick={createBlankProgram}
-                        disabled={creating}
-                    >
-                        <Icon
-                            name="plus"
-                            size={16}
-                        />
-                        Crear módulo
-                    </button>
-                </div>
-                <div className="panel-toolbar">
-                    <div
-                        className="filter-tabs"
-                        role="group"
-                        aria-label="Filtrar por estado"
-                    >
-                        {[['all', 'Todos'], ['draft', 'En revisión'], ['reviewed', 'Revisados']].map(([value, label]) => <button
-                            key={value}
-                            className={filter === value ? 'selected' : ''}
-                            onClick={() => setFilter(value)}
-                        >
-                            {label}
-                        </button>)}
-                    </div>
-                    <label className="search-field">
-                        <Icon
-                            name="search"
-                            size={17}
-                        />
-                        <input
-                            placeholder="Buscar un módulo…"
-                            aria-label="Buscar módulo"
-                            value={search}
-                            onChange={(event) => setSearch(event.target.value)}
-                        />
-                    </label>
-                </div>
-                <ErrorNotice
-                    message={error || actionError}
-                    onRetry={error ? reload : undefined}
-                />
-                {loading ? <LoadingState /> : filteredPrograms.length ? <div className="module-list">
-                    {filteredPrograms.map((program) => <article
-                        className="module-row"
-                        key={program.id}
-                    >
-                        <span className="module-icon">
-                            <Icon
-                                name="file"
-                                size={22}
-                            />
-                        </span>
-                        <div className="module-info">
-                            <Link href={`/programaciones/${program.id}`}>
-                                {program.module}
-                            </Link>
-                            <p>
-                                {program.code || 'Código pendiente'}
-                                <span>
-                                    ·
-                                </span>
-                                {program.sections.length}
-                                {' '}
-                                secciones
-                                <span>
-                                    ·
-                                </span>
-                                Actualizado
-                                {' '}
-                                {formatDate(program.updatedAt)}
-                            </p>
-                        </div>
-                        <StatusBadge reviewed={program.status === 'reviewed'} />
-                        <Link
-                            className="button button-secondary button-small"
-                            href={`/programaciones/${program.id}`}
-                        >
-                            Abrir
-                            <Icon
-                                name="arrow"
-                                size={15}
-                            />
-                        </Link>
-                        <button
-                            className="icon-button subtle"
-                            aria-label={`Eliminar ${program.module}`}
-                            onClick={() => deleteProgram(program)}
-                        >
-                            <Icon
-                                name="trash"
-                                size={17}
-                            />
-                        </button>
-                    </article>)}
-                </div> : <div className="empty-state">
-                    <span className="empty-icon">
-                        <Icon
-                            name="file"
-                            size={30}
-                        />
-                    </span>
-                    <h3>
-                        {search || filter !== 'all' ? 'No hay módulos con ese filtro' : 'Tu próximo curso empieza aquí'}
-                    </h3>
-                    <p>
-                        {search || filter !== 'all' ? 'Prueba otra búsqueda o cambia el estado seleccionado.' : 'Importa tu primera programación o prueba el documento de ejemplo.'}
-                    </p>
-                    {!search && filter === 'all' && <Link
-                        className="button button-secondary"
-                        href="/importar"
-                    >
-                        Importar documentos
-                        <Icon
-                            name="arrow"
-                            size={16}
-                        />
-                    </Link>}
-                </div>}
-            </section>
-            <div className="workspace-note">
-                <Icon
-                    name="check"
-                    size={15}
-                />
+    return <div className="document-library">
+        <header className="library-heading">
+            <div>
+                <p className="library-kicker">
+TU ESPACIO DOCENTE
+                </p>
+                <h1>
+Mis documentos
+                </h1>
                 <p>
-                    Los cambios se guardan al pulsar «Guardar cambios».
-                    {health?.storage === 'file' ? 'Demostración local: datos persistidos en archivos.' : health?.storage === 'mongodb' ? 'Datos e histórico conectados a MongoDB.' : ''}
+Importa, edita y revisa las programaciones de tu centro.
                 </p>
             </div>
-        </>);
+            <Link
+                className="button library-primary"
+                href="/importar">
+                <Icon
+                    name="plus"
+                    size={18} />
+Importar documento
+            </Link>
+        </header>
+        {!loading && !error && <section
+            className={`library-overview ${latest ? '' : 'is-empty'}`}
+            aria-label={latest ? 'Continuar trabajando' : 'Empieza tu programación'}>
+            <div className="library-resume">
+                <div className="library-resume-content">
+                    <span className="library-overline">
+                        <span />
+                        {latest ? 'TU ÚLTIMA PROGRAMACIÓN' : 'UN NUEVO PUNTO DE PARTIDA'}
+                    </span>
+                    <h2>
+                        {latest ? 'Continúa tu última programación' : 'Prepara tu primera programación'}
+                    </h2>
+                    <p>
+                        {latest ? latest.filename : 'Sube un PDF o Word, pulsa sobre el texto para editarlo y descarga el documento revisado.'}
+                    </p>
+                    {latest && <span className="library-resume-meta">
+                        {latest.pageCount}
+                        {' '}
+páginas ·
+                        {' '}
+                        {latest.reviewedPages}
+                        {' '}
+revisadas
+                    </span>}
+                    <Link
+                        href={latest ? `/archivos/${latest.id}` : '/importar'}
+                        className="library-resume-link">
+                        {latest ? 'Continuar editando' : 'Importar mi primer documento'}
+                        <Icon
+                            name="arrow"
+                            size={17} />
+                    </Link>
+                </div>
+                <div
+                    className="library-document-art"
+                    aria-hidden="true">
+                    <div className="library-art-sheet sheet-back" />
+                    <div className="library-art-sheet sheet-front">
+                        <span className="art-paper-symbol">
+                            <Icon
+                                name="file"
+                                size={22} />
+                        </span>
+                        <strong>
+Programación
+                            <br />
+didáctica
+                        </strong>
+                        <span className="art-paper-line" />
+                        <span className="art-paper-line short" />
+                        <div className="art-paper-table">
+                            <i />
+                            <i />
+                            <i />
+                            <i />
+                            <i />
+                            <i />
+                        </div>
+                        <span className="art-paper-stamp">
+                            <Icon
+                                name="check"
+                                size={13} />
+Tu próximo curso
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div className="library-summary">
+                <span className="library-summary-icon">
+                    <Icon
+                        name="grid"
+                        size={19} />
+                </span>
+                <h2>
+Estado de la revisión
+                </h2>
+                <p>
+Comprueba qué documentos quedan por revisar.
+                </p>
+                <div className="library-metrics">
+                    <div>
+                        <strong>
+                            {sorted.length}
+                        </strong>
+                        <span>
+Documentos
+                        </span>
+                    </div>
+                    <div>
+                        <strong>
+                            {sorted.length - reviewed}
+                        </strong>
+                        <span>
+En revisión
+                        </span>
+                    </div>
+                    <div>
+                        <strong>
+                            {reviewed}
+                        </strong>
+                        <span>
+Revisados
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </section>}
+        <section
+            className="library-collection"
+            aria-labelledby="library-files-title">
+            <div className="library-collection-title">
+                <h2 id="library-files-title">
+Tu biblioteca
+                    <span>
+                        {files?.length || 0}
+                    </span>
+                </h2>
+                <label className="library-search">
+                    <Icon
+                        name="search"
+                        size={18} />
+                    <input
+                        aria-label="Buscar archivos"
+                        placeholder="Buscar un documento…"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)} />
+                    {search && <button
+                        aria-label="Limpiar búsqueda"
+                        onClick={() => setSearch('')}>
+                        <Icon
+                            name="close"
+                            size={15} />
+                    </button>}
+                </label>
+            </div>
+            <div className="library-filterbar">
+                <div
+                    className="library-filters"
+                    role="group"
+                    aria-label="Estado de los documentos">
+                    {[['all', 'Todos'], ['pending', 'En revisión'], ['reviewed', 'Revisados']].map(([value, label]) => <button
+                        key={value}
+                        aria-pressed={filter === value}
+                        onClick={() => setFilter(value)}>
+                        {label}
+                    </button>)}
+                </div>
+                <label className="library-sort">
+                    <Icon
+                        name="clock"
+                        size={14} />
+                    <select
+                        aria-label="Ordenar documentos"
+                        value={sort}
+                        onChange={(event) => setSort(event.target.value)}>
+                        <option value="recent">
+Más recientes
+                        </option>
+                        <option value="name">
+Nombre A–Z
+                        </option>
+                    </select>
+                </label>
+            </div>
+            <ErrorNotice
+                message={actionError || error}
+                onRetry={reload} />
+            {loading ? <LoadingState label="Abriendo tu biblioteca…" /> : <>
+                {!!filtered.length && <div className="library-grid">
+                    {filtered.map((file) => <article
+                        className="file-card library-file"
+                        key={file.id}>
+                        <div className="library-file-top">
+                            <span className={`library-file-icon ${file.extension === '.pdf' ? 'is-pdf' : 'is-word'}`}>
+                                <Icon
+                                    name="file"
+                                    size={25} />
+                            </span>
+                            <span className={`library-status ${file.status === 'reviewed' ? 'is-reviewed' : ''}`}>
+                                <span />
+                                {file.status === 'reviewed' ? 'Revisado' : 'En revisión'}
+                            </span>
+                        </div>
+                        <div className="library-file-info">
+                            <span className="library-file-type">
+                                {file.extension === '.pdf' ? 'PDF' : 'WORD'}
+                                {' '}
+·
+                                {' '}
+                                {file.pageCount}
+                                {' '}
+PÁGINAS
+                            </span>
+                            <h3>
+                                {file.filename.replace(/\.[^.]+$/, '')}
+                            </h3>
+                            <p>
+Editado
+                                {' '}
+                                {formatDate(file.updatedAt)}
+                            </p>
+                        </div>
+                        <div className="library-file-progress">
+                            <div>
+                                <span>
+                                    {file.reviewedPages}
+                                    {' '}
+de
+                                    {' '}
+                                    {file.pageCount}
+                                    {' '}
+páginas revisadas
+                                </span>
+                                <strong>
+                                    {Math.round(file.reviewedPages / (file.pageCount || 1) * 100)}
+                                    {' '}
+%
+                                </strong>
+                            </div>
+                            <progress
+                                value={file.reviewedPages}
+                                max={file.pageCount || 1}
+                                aria-label={`Revisión de ${file.filename}`} />
+                        </div>
+                        <div className="library-file-bottom">
+                            <Link
+                                href={`/archivos/${file.id}`}
+                                className="library-open-link">
+Abrir documento
+                                <span className="library-open-arrow">
+                                    <Icon
+                                        name="arrow"
+                                        size={17} />
+                                </span>
+                            </Link>
+                            <button
+                                type="button"
+                                className="library-delete"
+                                aria-label={`Eliminar ${file.filename}`}
+                                disabled={deleting === file.id}
+                                onClick={() => removeFile(file)}>
+                                <Icon
+                                    name="trash"
+                                    size={15} />
+                                {deleting === file.id ? 'Eliminando…' : 'Eliminar'}
+                            </button>
+                        </div>
+                    </article>)}
+                    <Link
+                        href="/importar"
+                        className="library-add-file">
+                        <span>
+                            <Icon
+                                name="plus"
+                                size={24} />
+                        </span>
+                        <strong>
+Un nuevo documento
+                        </strong>
+                        <p>
+Importa un PDF o Word
+                        </p>
+                    </Link>
+                </div>}
+                {!filtered.length && !error && <div className="library-empty">
+                    <span>
+                        <Icon
+                            name={search ? 'search' : 'file'}
+                            size={27} />
+                    </span>
+                    <h3>
+                        {search ? 'No encontramos ese documento' : filter !== 'all' ? 'No hay documentos en este estado' : 'Todo listo para empezar'}
+                    </h3>
+                    <p>
+                        {search ? 'Prueba con otro nombre o cambia los filtros.' : filter !== 'all' ? 'Tus demás programaciones están en «Todos».' : 'Importa tu primera programación y la encontrarás aquí.'}
+                    </p>
+                    {search || filter !== 'all' ? <button
+                        className="text-button"
+                        onClick={() => {
+                            setSearch(''); setFilter('all');
+                        }}>
+Ver todos los documentos
+                    </button> : <Link
+                        className="button library-primary"
+                        href="/importar">
+                        <Icon
+                            name="plus"
+                            size={16} />
+Importar documento
+                    </Link>}
+                </div>}
+            </>}
+        </section>
+        {!!manual.length && <section className="library-manual">
+            <h2>
+Programaciones manuales
+            </h2>
+            {manual.map((program) => <Link
+                key={program.id}
+                href={`/programaciones/${program.id}`}>
+                <Icon
+                    name="file"
+                    size={18} />
+                <span>
+                    {program.module}
+                </span>
+                <Icon
+                    name="arrow"
+                    size={16} />
+            </Link>)}
+        </section>}
+        <p className="library-footnote">
+            <Icon
+                name="check"
+                size={14} />
+La edición conserva el original. Eliminar un documento también elimina su original.
+        </p>
+    </div>;
 }

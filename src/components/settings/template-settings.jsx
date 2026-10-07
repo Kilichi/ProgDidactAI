@@ -10,7 +10,7 @@ export function TemplateSettings() {
     const { data: health } = useResource('/api/health');
     const [actionError, setActionError] = useState('');
     const [saving, setSaving] = useState(false);
-    const { setDirty, dirty, notify } = useWorkspace();
+    const { setDirty, dirty, notify, updateCenterSettings } = useWorkspace();
     useEffect(() => () => setDirty(false), [setDirty]);
     function updateSettings(changes) {
         setSettings((previous) => ({
@@ -24,10 +24,12 @@ export function TemplateSettings() {
         setSaving(true);
         setActionError('');
         try {
-            setSettings(await apiRequest('/api/settings', {
+            const saved = await apiRequest('/api/settings', {
                 method: 'PUT',
                 body: settings,
-            }));
+            });
+            setSettings(saved);
+            updateCenterSettings(saved);
             setDirty(false);
             notify('Plantilla institucional actualizada.');
         } catch (failure) {
@@ -160,6 +162,7 @@ export function TemplateSettings() {
                         </h3>
                         <p>
                             Curso
+                            {' '}
                             {settings.academicYear}
                         </p>
                         <small>

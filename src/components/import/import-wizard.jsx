@@ -135,7 +135,7 @@ export function ImportWizard() {
                                 Tus documentos de partida
                             </h2>
                             <p>
-                                Puedes importar varios módulos a la vez.
+                                Puedes importar varios archivos a la vez.
                             </p>
                         </div>
                         <span className="badge badge-neutral">
@@ -313,7 +313,7 @@ export function ImportWizard() {
                                     name="check"
                                     size={16}
                                 />
-                                Un archivo puede contener varios módulos
+                                Cada archivo se edita página a página
                             </li>
                         </ul>
                     </div>
@@ -326,7 +326,7 @@ export function ImportWizard() {
                             ¿Un documento incompleto?
                         </h3>
                         <p>
-                            Los fragmentos sin módulo y las numeraciones dudosas quedan señalados. Puedes corregirlos y reasignarlos desde el editor.
+                            Conserva el documento completo y cambia de página desde el editor. Puedes comparar cada página con su original y previsualizar el resultado.
                         </p>
                     </div>
                 </aside>
@@ -373,19 +373,15 @@ export function ImportWizard() {
                             omitidas
                         </small>}
                         {job.status === 'done' && <div className="job-links">
-                            {job.programIds.map((id, index) => <Link
-                                key={id}
-                                href={`/programaciones/${id}`}
-                                className="text-button"
-                            >
-                                Revisar módulo
-                                {index + 1}
+                            {job.sourceId && <Link
+                                href={`/archivos/${job.sourceId}`}
+                                className="button button-secondary button-small">
+                                Abrir archivo y editar páginas
                                 {' '}
                                 <Icon
                                     name="arrow"
-                                    size={14}
-                                />
-                            </Link>)}
+                                    size={16} />
+                            </Link>}
                         </div>}
                     </div>
                 </article>)}

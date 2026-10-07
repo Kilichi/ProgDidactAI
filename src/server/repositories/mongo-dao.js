@@ -108,6 +108,39 @@ export class MongoDAO {
         });
         return s;
     }
+    async deleteSource(id) {
+        await this.sources.deleteOne({ _id: id });
+        return { ok: true };
+    }
+    async deleteFileDocument(id, programs) {
+        const session = this.client.startSession();
+        try {
+            await session.withTransaction(async () => {
+                for (const program of programs) {
+                    const result = await this.programs.deleteOne({
+                        _id: program.id,
+                        revision: program.revision,
+                    }, { session });
+                    if (!result.deletedCount) {
+                        throw new AppError('El documento ha cambiado. Recarga antes de eliminarlo.', 409);
+                    }
+                    await this.versions.deleteMany({ programId: program.id }, { session });
+                }
+                const source = await this.sources.deleteOne({ _id: id }, { session });
+                if (!source.deletedCount) {
+                    throw new AppError('Documento original no encontrado.', 404);
+                }
+            });
+        } catch (error) {
+            if (error.code === 20) {
+                throw new AppError('La eliminación segura requiere MongoDB con replica set (por ejemplo Atlas). Configura un replica set o utiliza el almacenamiento local.', 503);
+            }
+            throw error;
+        } finally {
+            await session.endSession();
+        }
+        return { ok: true };
+    }
     async getSource(id) {
         const s = await this.sources.findOne({ _id: id });
         if (!s) {

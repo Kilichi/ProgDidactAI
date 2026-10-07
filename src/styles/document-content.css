@@ -1,0 +1,31 @@
+/* Shared physical dimensions and typography for editing and PDF export. */
+.document-content {
+    color: #243044;
+    font: 10.5pt/1.45 Arial, sans-serif;
+    letter-spacing: normal;
+    text-align: left;
+    color-scheme: light;
+    overflow-wrap: anywhere;
+}
+.document-content * { box-sizing: border-box; }
+.document-content .doc-section { margin: 0 0 5mm; }
+.document-content .doc-heading { display: flex; align-items: start; gap: 2mm; color: #243c65; font-size: 12pt; font-weight: 700; line-height: 1.35; margin: 0 0 4mm; break-after: avoid; }
+.document-content .doc-code { flex-shrink: 0; }
+.document-content .doc-text { white-space: pre-wrap; min-height: 1.45em; margin: 0; padding: 0; border: 0; font: inherit; color: inherit; background: transparent; overflow-wrap: anywhere; }
+.document-content .doc-paragraph { margin-bottom: 3mm; }
+.document-content .doc-list { list-style: disc; padding-left: 6mm; margin: 0 0 4mm; }
+.document-content .doc-list li { margin: 0 0 1.5mm; }
+.document-content .doc-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 3mm 0 5mm; font: inherit; }
+.document-content .doc-table td, .document-content .doc-table th { border: .6pt solid #acb8c7; padding: 2mm 2.3mm; vertical-align: top; text-align: left; overflow-wrap: anywhere; }
+.document-content .doc-table th, .document-content .doc-shaded { background: #edf2f7; color: #243c65; font-weight: 700; }
+.document-content thead { display: table-header-group; }
+.document-content tr { break-inside: avoid; }
+.document-content .doc-table-actions { display: flex; gap: 6px; margin: -3mm 0 5mm; }
+.document-content .doc-table-actions button { border: 0; border-radius: 999px; padding: 5px 9px; color: #246c64; background: #e8f3f0; font: 10px Arial, sans-serif; cursor: pointer; }
+.doc-remove-rows { position: relative; font: 11px Arial, sans-serif; color: #923c3c; }
+.doc-remove-rows summary { padding: 6px 9px; cursor: pointer; }
+.doc-remove-rows[open] { display: flex; flex-wrap: wrap; gap: 4px; }
+.document-content [contenteditable] { cursor: text; border-radius: 1px; outline: 2px solid transparent; outline-offset: 2px; }
+.document-content [contenteditable]:hover { outline-color: #bfdbfe; }
+.document-content [contenteditable]:focus { outline-color: #2563eb; background: #f8fbff; }
+.document-content [contenteditable]:empty::before { content: 'Escribe aquí'; color: #79869a; pointer-events: none; }

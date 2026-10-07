@@ -2,6 +2,10 @@ import './globals.css';
 import '@/styles/visual-system.css';
 import '@/styles/workspace.css';
 import '@/styles/editor.css';
+import '@/styles/document-content.css';
+import '@/styles/studio.css';
+import '@/styles/library.css';
+import '@/styles/institute.css';
 import { WorkspaceShell } from '@/components/layout/workspace-shell';
 const themeInitialization = `
     (function () {

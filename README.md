@@ -13,6 +13,8 @@ docker compose up --build -d
 
 Abre **http://localhost:3000**. Docker incluye MongoDB, Chromium, Poppler y LibreOffice. Los documentos y la base de datos se conservan en volúmenes. La aplicación utiliza extracción local inicialmente; puedes configurar Gemini o Groq en `.env` y recrear el servicio `web`.
 
+MongoDB se inicia como replica set de un nodo para permitir eliminaciones transaccionales. Si utilizas otra instancia, configura un replica set o Atlas; el almacenamiento local (`DATA_DRIVER=file`) también realiza la eliminación completa en una única escritura. Si un archivo comparte apartados con otros documentos, la aplicación bloquea su eliminación para protegerlos.
+
 ```bash
 docker compose logs -f web
 docker compose down
@@ -26,7 +28,7 @@ Requisitos:
 - Poppler (`pdftotext` y `pdftohtml`) para extraer el texto y su posición en los PDF.
 - Chromium para generar documentos nuevos con la plantilla institucional. El formato original se edita directamente y no necesita Chromium.
 - LibreOffice Writer para convertir Word a PDF conservando las tablas y su paginación. DOCX también puede importarse mediante Mammoth cuando LibreOffice no está disponible; en ese caso se señala la revisión del formato.
-- Python 3 y pikepdf para modificar el PDF original conservando sus páginas y recursos. Docker incluye ambas herramientas.
+- Python 3 y pikepdf para extraer los bordes y las celdas combinadas de las tablas y modificar el PDF original conservando sus páginas y recursos. Docker incluye ambas herramientas.
 - MongoDB para la persistencia exigida en la actividad. El modo `file` permite probar la aplicación sin instalar una base de datos.
 
 En Debian, Ubuntu o LliureX, instala las herramientas del sistema:
@@ -87,13 +89,13 @@ Las claves se utilizan exclusivamente en el servidor. Los modelos disponibles y 
 1. **Comenzar asistente.** Abre «Importar documentos» desde el panel.
 2. **Subir documentos.** Selecciona o arrastra PDF, DOCX o DOC. Se admiten hasta 20 archivos en cola, de hasta 15 MB y 400 páginas por archivo. El botón «Probar con el PDF de ejemplo» importa `ejemplo_pdf.pdf` realmente.
 3. **Organizar.** Selecciona extracción local, Gemini o Groq. El progreso muestra la extracción, la interpretación y la conservación de líneas. Las opciones de IA se activan cuando hay una clave en el servidor.
-4. **Editar.** El editor abre una vista continua: haz clic en un título, texto o celda para editar directamente. El índice permite saltar a un apartado y buscar también por contenido. «Comparar con original» muestra el PDF al lado. Guarda con Ctrl+S o el botón fijo; puedes deshacer y rehacer. «Organizar estructura» permite añadir, eliminar, reordenar y unir bloques, para exportaciones con la plantilla institucional.
-5. **Previsualizar.** «Ver documento original» muestra el archivo completo. «Ver JSON» muestra los datos actuales del editor, incluidos cambios sin guardar. La pantalla de exportación también ofrece vistas del JSON, el original y el PDF real que se descargará.
-6. **Corregir la asignación.** Guarda los cambios y utiliza «¿Este apartado pertenece a otro módulo?» para moverlo. También puedes crear un módulo vacío desde el panel.
-7. **Guardar y validar.** Marca cada apartado como revisado. «Guardar cambios» crea una nueva versión. Cuando todos están revisados, pulsa «Marcar módulo como revisado».
-8. **Recuperar versiones.** El histórico permite consultar versiones anteriores y recuperarlas creando otra versión, sin sobrescribir la historia existente.
+4. **Abrir el archivo.** «Documentos» reúne los archivos con búsqueda y filtros de revisión. Cada importación aparece una sola vez, aunque contenga varios módulos.
+5. **Editar por páginas.** Haz clic en un texto o celda para modificarlo. Usa el índice, el selector de página o las flechas para desplazarte. «Original» permite consultar el archivo de partida. Puedes deshacer y rehacer cambios.
+6. **Previsualizar y descargar.** «Vista previa PDF» guarda los cambios pendientes y genera el documento conservando las páginas originales. Las descargas de archivos importados no añaden páginas; si una edición no cabe, se indica dónde corregirla. Debajo de cada tabla puedes añadir filas o abrir «Eliminar una fila» y elegir la fila; también puedes deshacer la eliminación.
+7. **Guardar y revisar.** El guardado es automático; también puedes usar el botón de guardar o Ctrl+S. El estado confirma cuándo se han guardado los cambios. Marca cada página como revisada; editarla vuelve a marcarla como pendiente.
+8. **Resolver errores.** Si una edición no puede situarse o excede su espacio, el mensaje indica el apartado, la página y, para tablas, la fila y columna. «Ir a la edición señalada» abre ese campo para corregirlo y muestra una indicación para resolver el problema.
 9. **Preparar la plantilla.** Ajusta nombre del centro, departamento, ciclo, curso, título, color, pie de página y logo PNG/JPEG de hasta 200 KB.
-10. **Consolidar.** Selecciona módulos y ordena su posición. Previsualiza y descarga el PDF o los datos en JSON. El documento definitivo exige revisión completa; la opción de borrador permite trabajar con módulos pendientes y los identifica como tales.
+10. **Consolidar.** La pantalla de exportación conserva la selección de módulos y la plantilla institucional para generar documentos nuevos. El editor anterior sigue disponible para programaciones creadas manualmente y para la gestión de estructura e histórico.
 
 El PDF incluye portada, índice con las páginas calculadas durante el renderizado, encabezados de tablas y pie con numeración. La numeración de apartados puede unificarse o conservarse. Las referencias escritas dentro de los párrafos deben revisarse cuando se renumeran los epígrafes.
 
@@ -105,7 +107,7 @@ El formato predeterminado es **Diseño original · mismas páginas**. Se modific
 
 El ejemplo conserva sus **38 páginas**, también cuando solo se selecciona uno de sus módulos: se mantiene el archivo completo y los módulos no seleccionados permanecen intactos. Si se reúnen varios originales, cada uno se incluye una vez y el total es la suma de sus páginas. La previsualización muestra el PDF generado, con el mismo motor que la descarga.
 
-Las ediciones deben caber en el espacio disponible. Si un texto invade otro contenido, una fuente no contiene un carácter nuevo, o no se puede identificar con precisión su posición, la operación informa del problema y no genera una descarga incompleta. No se recorta texto ni se añaden páginas. Añadir, eliminar, unir o reordenar apartados y bloques requiere seleccionar **Plantilla institucional · documento nuevo**, que recalcula el índice y las páginas. Los PDF con texto dentro de estructuras gráficas complejas o páginas giradas pueden necesitar normalización previa.
+Las ediciones deben caber en el espacio disponible. Si un texto invade otro contenido, una fuente no contiene un carácter nuevo, o no se puede identificar con precisión su posición, la operación informa del problema y no genera una descarga incompleta. No se recorta texto ni se añaden páginas. Para descargar un archivo importado se debe conservar su estructura: puedes deshacer cambios de filas o eliminar las filas añadidas. La plantilla institucional se reserva para programaciones manuales sin original asociado. Los PDF con texto dentro de estructuras gráficas complejas o páginas giradas pueden necesitar normalización previa.
 
 La edición de Word con su formato original requiere LibreOffice para obtener sus páginas PDF. La fidelidad de esa conversión depende de que las fuentes del documento estén instaladas.
 
@@ -119,7 +121,7 @@ La edición de Word con su formato original requiere LibreOffice para obtener su
 
 Se conservan las **1.601 líneas de contenido**. Los epígrafes `10.3.4`, `10.3.4.1` y `10.3.7.5` dentro del bloque de DWES se mantienen en su contexto y se señalan para revisión. Las situaciones de aprendizaje reciben apartados independientes. Las tablas continúan a través de los saltos de página y conservan referencias a las líneas del original.
 
-La extracción local reconstruye tablas a partir de la distribución del texto; las celdas y sus continuaciones requieren revisión. La IA puede reorganizarlas, pero su salida se valida para impedir omisiones, duplicaciones o contenido inventado. Los bloques extensos se dividen antes del análisis. La validación admite que un encabezado original pase a las columnas de una tabla.
+La extracción local lee los bordes dibujados y las palabras posicionadas de las tablas PDF: conserva tablas separadas, anchos de columnas, celdas combinadas y continuaciones dentro de cada celda. El editor y la plantilla institucional usan esa misma geometría. La IA conserva esas tablas y su salida para el resto del texto se valida para impedir omisiones, duplicaciones o contenido inventado. Si no hay bordes detectables o falta Python/pikepdf, se utiliza la reconstrucción por texto, que requiere revisión. Los bloques extensos se dividen antes del análisis. La validación admite que un encabezado original pase a las columnas de una tabla.
 
 Los PDF escaneados sin texto requieren OCR previo. Las páginas sin texto dentro de un documento mixto quedan señaladas. La aplicación no inventa datos para completar documentos parciales.
 
@@ -181,16 +183,16 @@ npm run build
 
 Las pruebas comprueban la extracción del PDF y de DOCX, la cobertura de contenido, los avisos de numeración, la integridad de la salida de IA, la división de tablas extensas, las peticiones a ambos proveedores mediante respuestas simuladas, la persistencia tras reinicio, el histórico, las escrituras concurrentes, la reasignación y el flujo de controladores HTTP.
 
-Para comprobar el DAO con una base MongoDB real, las pruebas crean y eliminan una base aislada con nombre aleatorio:
+Para comprobar el DAO con una base MongoDB real (replica set), las pruebas crean y eliminan una base aislada con nombre aleatorio. Incluyen concurrencia, histórico y reversión de una eliminación transaccional fallida:
 
 ```bash
-TEST_MONGODB_URI=mongodb://127.0.0.1:27017 npm test
+TEST_MONGODB_URI='mongodb://127.0.0.1:27017/?replicaSet=rs0' npm test
 ```
 
 En Docker:
 
 ```bash
-docker compose exec web env TEST_MONGODB_URI=mongodb://mongo:27017 npm test
+docker compose exec web env TEST_MONGODB_URI='mongodb://mongo:27017/?replicaSet=rs0' npm test
 ```
 
 Para recorrer la aplicación con Chromium, guardar capturas de escritorio/móvil y comprobar la exportación real del PDF:

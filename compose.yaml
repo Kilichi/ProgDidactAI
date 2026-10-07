@@ -5,7 +5,7 @@ services:
             - "127.0.0.1:3000:3000"
         environment:
             DATA_DRIVER: mongodb
-            MONGODB_URI: mongodb://mongo:27017
+            MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0
             MONGODB_DB: progdidactai
             DATA_DIR: /app/data
             AI_PROVIDER: ${AI_PROVIDER:-local}
@@ -21,10 +21,11 @@ services:
         restart: unless-stopped
     mongo:
         image: mongo:7
+        command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
         volumes:
             - database:/data/db
         healthcheck:
-            test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+            test: ["CMD", "mongosh", "--quiet", "--eval", "try { if (!rs.status().myState || rs.status().myState !== 1) quit(1); } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}); quit(1); }"]
             interval: 10s
             timeout: 5s
             retries: 10

@@ -82,6 +82,7 @@ export function HistoryDialog({ program, onClose, onRestore }) {
                 <div>
                     <strong>
                         Versión
+                        {' '}
                         {version.revision}
                         {' '}
                         {version.revision === program.revision && <span className="badge badge-green">
@@ -116,6 +117,7 @@ export function HistoryDialog({ program, onClose, onRestore }) {
         {snapshot && <section className="snapshot-preview">
             <h3>
                 Contenido de la versión
+                {' '}
                 {snapshot.revision}
             </h3>
             {snapshot.sections.map((section) => <details key={section.id}>

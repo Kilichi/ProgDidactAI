@@ -4,32 +4,34 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Icon } from '@/components/ui/icon';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
+import { useResource } from '@/hooks/use-resource';
 const WorkspaceContext = createContext(null);
 export const useWorkspace = () => useContext(WorkspaceContext);
 const navigation = [
     {
         href: '/',
-        label: 'Mis programaciones',
+        label: 'Documentos',
         icon: 'grid',
     },
     {
         href: '/importar',
-        label: 'Importar documentos',
+        label: 'Importar documento',
         icon: 'upload',
     },
     {
         href: '/exportar',
-        label: 'Consolidar y exportar',
+        label: 'Descargar documentos',
         icon: 'download',
     },
     {
         href: '/configuracion',
-        label: 'Plantilla del centro',
+        label: 'Ajustes del centro',
         icon: 'settings',
     },
 ];
 export function WorkspaceShell({ children }) {
     const pathname = usePathname();
+    const { data: settings, setData: updateCenterSettings } = useResource('/api/settings');
     const [toast, setToast] = useState('');
     const [dirty, setDirty] = useState(false);
     const toastTimer = useRef(null);
@@ -63,6 +65,7 @@ export function WorkspaceShell({ children }) {
             dirty,
             setDirty,
             guardNavigation,
+            updateCenterSettings,
         }}
         >
             <a
@@ -94,7 +97,7 @@ export function WorkspaceShell({ children }) {
                                 AI
                             </span>
                             <small>
-                                Documentos que evolucionan.
+                                Tu programación, al día.
                             </small>
                         </span>
                     </Link>
@@ -103,7 +106,7 @@ export function WorkspaceShell({ children }) {
                     </p>
                     <nav aria-label="Navegación principal">
                         {navigation.map((item) => {
-                            const active = item.href === '/' ? pathname === '/' || pathname.startsWith('/programaciones') : pathname === item.href;
+                            const active = item.href === '/' ? pathname === '/' || (pathname.startsWith('/programaciones') || pathname.startsWith('/archivos')) : pathname === item.href;
                             return <Link
                                 key={item.href}
                                 href={item.href}
@@ -160,7 +163,7 @@ export function WorkspaceShell({ children }) {
                         </span>
                         <div>
                             <strong>
-                                Departamento de Informática
+                                {settings?.department || 'Centro educativo'}
                             </strong>
                             <small>
                                 Gestión de programaciones
@@ -177,7 +180,7 @@ export function WorkspaceShell({ children }) {
                                 size={14}
                             />
                             <strong>
-                                {current?.label || 'Editor de programación'}
+                                {current?.label || (pathname.startsWith('/archivos') ? 'Editor de documentos' : 'Editor de programación')}
                             </strong>
                         </div>
                         <div className="topbar-actions">
@@ -185,7 +188,7 @@ export function WorkspaceShell({ children }) {
                             <span className="topbar-label">
                                 <span className="status-dot" />
                                 {' '}
-                                Curso 2026 / 2027
+                                {settings?.academicYear ? `Curso ${settings.academicYear}` : 'Programaciones didácticas'}
                             </span>
                         </div>
                     </header>

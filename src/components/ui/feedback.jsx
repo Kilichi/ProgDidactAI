@@ -1,5 +1,7 @@
+import Link from 'next/link';
+import { editLocationURL } from '@/lib/edit-location';
 import { Icon } from './icon';
-export function ErrorNotice({ message, onRetry }) {
+export function ErrorNotice({ message, onRetry, details }) {
     if (!message) {
         return null;
     }
@@ -13,8 +15,16 @@ export function ErrorNotice({ message, onRetry }) {
                 No se pudo completar la operación
             </strong>
             <p>
-                {message}
+                {message instanceof Error ? message.message : message}
             </p>
+            {details?.solution && <p>
+                {details.solution}
+            </p>}
+            {details?.location?.programId && <Link
+                className="text-button"
+                href={editLocationURL(details.location)}>
+                Ir a la edición señalada
+            </Link>}
             {onRetry && <button
                 className="text-button"
                 onClick={onRetry}

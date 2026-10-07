@@ -45,9 +45,17 @@ export function handleRoute(handler) {
         try {
             if (!['GET', 'HEAD'].includes(request.method)) {
                 const origin = request.headers.get('origin');
-                const expectedHost = request.headers.get('host');
-                if (origin && new URL(origin).host !== expectedHost) {
-                    throw new AppError('Origen de la petición no permitido.', 403);
+                const expectedHost = request.headers.get('host') || new URL(request.url).host;
+                if (origin) {
+                    let originUrl;
+                    try {
+                        originUrl = new URL(origin);
+                    } catch {
+                        throw new AppError('Origen de la petición no permitido.', 403);
+                    }
+                    if (!['http:', 'https:'].includes(originUrl.protocol) || originUrl.host !== expectedHost) {
+                        throw new AppError('Origen de la petición no permitido.', 403);
+                    }
                 }
             }
             const params = routeContext?.params ? await routeContext.params : {};
@@ -60,10 +68,13 @@ export function handleRoute(handler) {
                 }, 400);
             }
             if (error instanceof AppError) {
-                return jsonResponse({ error: error.message }, error.status);
+                return jsonResponse({
+                    error: error.message,
+                    ...(error.details ? { details: error.details } : {}),
+                }, error.status);
             }
             console.error('Error del servidor:', error.message);
-            return jsonResponse({ error: 'No se pudo completar la operación. Comprueba la conexión a MongoDB y el registro del servidor.' }, 500);
+            return jsonResponse({ error: 'No se pudo completar la operación. Inténtalo de nuevo; si continúa, contacta con la persona responsable de la aplicación.' }, 500);
         }
     };
 }

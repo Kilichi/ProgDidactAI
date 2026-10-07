@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { getContext } from '../context.js';
 import { AppError, settingsSchema } from '../domain/schemas.js';
 import { jsonResponse, readJson } from '../http/route-handler.js';
-import { exportPDF, renderDocument } from '../services/pdf-export.js';
+import { exportPDF } from '../services/pdf-export.js';
 import { exportOriginalPDF, prepareOriginalDocument } from '../services/original-layout.js';
 const exportSchema = z.object({
     ids: z.array(z.string().min(1)).min(1).max(100),
@@ -17,6 +17,9 @@ async function getExportInput(request) {
     }
     const context = await getContext();
     const programs = await Promise.all(options.ids.map((id) => context.dao.getProgram(id)));
+    if (programs.some((program) => program.sourceIds.length || program.sections.some((section) => section.sourceId))) {
+        options.layout = 'original';
+    }
     const settings = await context.dao.getSettings();
     if (!options.draft && programs.some((program) => program.status !== 'reviewed' || !program.sections.length || program.sections.some((section) => !section.reviewed))) {
         throw new AppError('Revisa todos los módulos seleccionados o activa «Exportar como borrador».');
@@ -62,10 +65,10 @@ export async function downloadPDF(request) {
 export async function previewDocument(request) {
     const { programs, settings, options, config, dao } = await getExportInput(request);
     const original = options.layout === 'original' ? await getOriginalExport(programs, dao, config) : null;
-    return new Response(original ? new Uint8Array(await exportOriginalPDF(original, config)) : renderDocument(programs, settings, options), {
+    return new Response(new Uint8Array(original ? await exportOriginalPDF(original, config) : await exportPDF(programs, settings, options, config)), {
         headers: {
-            'Content-Type': original ? 'application/pdf' : 'text/html; charset=utf-8',
-            ...(original ? { 'Content-Disposition': 'inline; filename="Vista_Previa.pdf"' } : {}),
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': 'inline; filename="Vista_Previa.pdf"',
             'Cache-Control': 'no-store',
             ...(original ? { 'X-Page-Count': String(original.pageCount) } : {}),
         },

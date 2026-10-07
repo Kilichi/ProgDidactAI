@@ -39,6 +39,39 @@ test('MongoDB conserva versiones y aplica el control de concurrencia', { skip: !
         assert.equal(versions.length, 2);
         assert.equal(versions[1].teacher, 'Original');
         assert.equal(versions[0].revision, 2);
+        await dao.insertSource({
+            id: 'source',
+            pages: [],
+        });
+        await dao.insertProgram({
+            ...program,
+            id: 'second',
+        });
+        await assert.rejects(dao.deleteFileDocument('source', [
+            {
+                id: 'second',
+                revision: 1,
+            },
+            {
+                id: program.id,
+                revision: 1,
+            },
+        ]), { status: 409 });
+        assert.equal((await dao.getProgram('second')).revision, 1, 'La transacción revierte el primer borrado si falla el segundo');
+        assert.equal((await dao.getSource('source')).id, 'source');
+        await dao.deleteFileDocument('source', [
+            {
+                id: 'second',
+                revision: 1,
+            },
+            {
+                id: program.id,
+                revision: 2,
+            },
+        ]);
+        await assert.rejects(dao.getProgram(program.id), { status: 404 });
+        await assert.rejects(dao.getSource('source'), { status: 404 });
+        assert.equal(await dao.versions.countDocuments(), 0);
     } finally {
         await dao.db.dropDatabase();
         await dao.close();

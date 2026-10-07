@@ -11,7 +11,7 @@ export async function apiRequest(url, options = {}) {
     });
     if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error || `La operación ha fallado (${response.status}).`);
+        throw Object.assign(new Error(payload.error || `La operación ha fallado (${response.status}).`), { details: payload.details });
     }
     return response.json();
 }
@@ -23,7 +23,7 @@ export async function downloadExport(format, options) {
     });
     if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error || 'No se pudo exportar el documento.');
+        throw Object.assign(new Error(payload.error || 'No se pudo exportar el documento.'), { details: payload.details });
     }
     return response;
 }

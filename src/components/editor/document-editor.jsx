@@ -1,11 +1,13 @@
 'use client';
 
+import { editFieldId } from '@/lib/edit-location';
+import { tableCellSpan } from '@/lib/table-layout';
 import { memo, useEffect, useRef } from 'react';
 import { Icon } from '@/components/ui/icon';
 import { useResource } from '@/hooks/use-resource';
 import { ErrorNotice, LoadingState } from '@/components/ui/feedback';
 
-function GrowingField({ value, onChange, label, className = '' }) {
+function GrowingField({ value, onChange, label, id, className = '' }) {
     const field = useRef(null);
     useEffect(() => {
         const element = field.current;
@@ -16,6 +18,7 @@ function GrowingField({ value, onChange, label, className = '' }) {
     }, [value]);
     return <textarea
         ref={field}
+        id={id}
         className={`document-field ${className}`}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -28,6 +31,10 @@ function GrowingField({ value, onChange, label, className = '' }) {
 const DocumentBlock = memo(function DocumentBlock({ block, onChange, title }) {
     if (block.type === 'text') {
         return <GrowingField
+            id={editFieldId({
+                blockId: block.id,
+                field: 'text',
+            })}
             value={block.text}
             label={`Texto de ${title}`}
             onChange={(text) => onChange({
@@ -53,6 +60,11 @@ const DocumentBlock = memo(function DocumentBlock({ block, onChange, title }) {
     const hasRealHeaders = block.columns.some((column) => !/^Columna \d+$/.test(column));
     return <div className="document-table-scroll">
         <table className="document-table">
+            {block.columnWidths && <colgroup>
+                {block.columnWidths.map((width, index) => <col
+                    key={index}
+                    style={{ width: `${width}%` }} />)}
+            </colgroup>}
             {hasRealHeaders && <thead>
                 <tr>
                     {block.columns.map((column, index) => <th key={index}>
@@ -62,16 +74,28 @@ const DocumentBlock = memo(function DocumentBlock({ block, onChange, title }) {
             </thead>}
             <tbody>
                 {block.rows.map((row, rowIndex) => <tr key={rowIndex}>
-                    {row.map((cell, columnIndex) => <td key={columnIndex}>
-                        <GrowingField
-                            value={cell}
-                            label={`${title}, fila ${rowIndex + 1}, columna ${columnIndex + 1}`}
-                            onChange={(value) => onChange({
-                                ...block,
-                                rows: block.rows.map((candidate, position) => position === rowIndex ? candidate.map((text, column) => column === columnIndex ? value : text) : candidate),
-                            })}
-                        />
-                    </td>)}
+                    {row.map((cell, columnIndex) => {
+                        const span = tableCellSpan(block, rowIndex, columnIndex);
+                        return span && <td
+                            key={columnIndex}
+                            rowSpan={span.rowSpan}
+                            colSpan={span.colSpan}>
+                            <GrowingField
+                                id={editFieldId({
+                                    blockId: block.id,
+                                    field: 'cell',
+                                    row: rowIndex,
+                                    column: columnIndex,
+                                })}
+                                value={cell}
+                                label={`${title}, fila ${rowIndex + 1}, columna ${columnIndex + 1}`}
+                                onChange={(value) => onChange({
+                                    ...block,
+                                    rows: block.rows.map((candidate, position) => position === rowIndex ? candidate.map((text, column) => column === columnIndex ? value : text) : candidate),
+                                })}
+                            />
+                        </td>;
+                    })}
                 </tr>)}
             </tbody>
         </table>
@@ -117,7 +141,9 @@ export function ReferencePreview({ sourceId, pageNumber }) {
     </aside>;
 }
 
-export function DocumentEditor({ program, sections, onChange, onSelect, selectedId }) {
+export function DocumentEditor({
+    program, sections, onChange, onSelect, selectedId, pageMode = false, headingOnPage = true,
+}) {
     function updateSection(section, changes) {
         onChange({
             sections: program.sections.map((candidate) => candidate.id === section.id ? {
@@ -128,7 +154,7 @@ export function DocumentEditor({ program, sections, onChange, onSelect, selected
         });
     }
     return <div className="document-paper">
-        <div className="document-paper-heading">
+        {!pageMode && <div className="document-paper-heading">
             <p className="eyebrow">
                 DOCUMENTO EDITABLE
             </p>
@@ -139,13 +165,14 @@ export function DocumentEditor({ program, sections, onChange, onSelect, selected
                 Haz clic en el texto o en una celda para editar. Usa el índice para ir directamente a un apartado.
             </p>
         </div>
+        }
         {sections.map((section) => <section
             key={section.id}
             id={`document-section-${section.id}`}
             className={`document-section ${selectedId === section.id ? 'is-current' : ''}`}
             onFocusCapture={() => onSelect(section.id)}
         >
-            <header className="document-section-toolbar">
+            {!pageMode && <header className="document-section-toolbar">
                 <span>
                     {section.sourceId ? `Original: páginas ${section.pageStart}–${section.pageEnd}` : 'Apartado nuevo'}
                 </span>
@@ -162,19 +189,29 @@ export function DocumentEditor({ program, sections, onChange, onSelect, selected
                     />
                     Revisado
                 </label>
-            </header>
-            <div className="document-section-title">
+            </header>}
+            {(!pageMode || headingOnPage || (!section.headingRefs.length && section.title !== 'Contenido sin epígrafe')) && <div className="document-section-title">
                 <input
                     aria-label={`Numeración de ${section.title}`}
                     value={section.code}
                     onChange={(event) => updateSection(section, { code: event.target.value })}
                 />
                 <GrowingField
+                    id={editFieldId({
+                        sectionId: section.id,
+                        field: 'title',
+                    })}
                     value={section.title}
                     label="Título del apartado"
                     onChange={(title) => updateSection(section, { title })}
                 />
             </div>
+            }
+            {pageMode && !section.headingRefs.length && section.title === 'Contenido sin epígrafe' && <button
+                className="text-button file-add-title"
+                onClick={() => updateSection(section, { title: '' })}>
+Añadir título a esta página
+            </button>}
             {section.warnings.length > 0 && <details className="document-section-notes">
                 <summary>
                     <Icon

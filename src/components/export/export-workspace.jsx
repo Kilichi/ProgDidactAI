@@ -21,6 +21,7 @@ export function ExportWorkspace() {
     const [layout, setLayout] = useState('original');
     const [busy, setBusy] = useState('');
     const [actionError, setActionError] = useState('');
+    const [errorDetails, setErrorDetails] = useState(null);
     const { notify } = useWorkspace();
     useEffect(() => {
         setPreview('');
@@ -35,6 +36,11 @@ export function ExportWorkspace() {
         }
     }, [pdfPreview]);
     const sourceIds = [...new Set((programs || []).filter((program) => selectedIds.includes(program.id)).flatMap((program) => [...program.sourceIds, ...program.sections.map((section) => section.sourceId)]).filter(Boolean))];
+    useEffect(() => {
+        if (sourceIds.length) {
+            setLayout('original');
+        }
+    }, [sourceIds.length]);
     function toggleProgram(programId) {
         setSelectedIds((previous) => previous.includes(programId) ? previous.filter((id) => id !== programId) : [...previous, programId]);
     }
@@ -50,10 +56,15 @@ export function ExportWorkspace() {
     async function exportDocument(format, previewOnly = false) {
         setBusy(previewOnly ? 'json-preview' : format);
         setActionError('');
+        setErrorDetails(null);
         try {
+            if (format === 'pdf' && pdfPreview) {
+                saveDownload(await (await fetch(pdfPreview)).blob(), 'Programacion_Didactica.pdf');
+                return;
+            }
             const response = await downloadExport(format, {
                 ids: selectedIds,
-                draft: format === 'preview' || previewOnly ? true : draft,
+                draft,
                 renumber,
                 layout,
             });
@@ -76,6 +87,7 @@ export function ExportWorkspace() {
             }
         } catch (failure) {
             setActionError(failure.message);
+            setErrorDetails(failure.details);
         } finally {
             setBusy('');
         }
@@ -108,7 +120,9 @@ export function ExportWorkspace() {
                     Ajustar plantilla
                 </Link>
             </section>
-            <ErrorNotice message={error || actionError} />
+            <ErrorNotice
+                message={error || actionError}
+                details={errorDetails} />
             {loading ? <LoadingState /> : <div className="export-grid">
                 <section className="card export-selection">
                     <div className="panel-heading">
@@ -221,13 +235,15 @@ export function ExportWorkspace() {
                             <option value="original">
                                 Diseño original · mismas páginas
                             </option>
-                            <option value="institutional">
+                            <option
+                                value="institutional"
+                                disabled={sourceIds.length > 0}>
                                 Plantilla institucional · documento nuevo
                             </option>
                         </select>
                     </label>
                     {layout === 'original' && <p className="notice notice-warning">
-                        Conserva las páginas completas, su numeración y el diseño de cada archivo importado. Los módulos no seleccionados del mismo archivo permanecen en el original. Las ediciones deben caber en su espacio; añadir o mover apartados requiere un documento nuevo.
+                        Conserva las páginas completas, su numeración y el diseño de cada archivo importado. No se añaden páginas. Si una edición no cabe, se indica el apartado que debes ajustar.
                     </p>}
                     {layout === 'institutional' && <>
                         <p>
@@ -360,7 +376,7 @@ export function ExportWorkspace() {
                             {previewView === 'json' ? 'Vista previa del JSON' : previewView === 'original' ? 'Documento original' : 'Previsualización del documento'}
                         </h2>
                         <p>
-                            {previewView === 'json' ? 'Los mismos datos que contiene la descarga JSON.' : previewView === 'original' ? 'El archivo importado, conservado sin modificaciones.' : pageCount ? `${pageCount} páginas · diseño y numeración del original.` : 'El PDF calcula la paginación y el índice al descargarlo.'}
+                            {previewView === 'json' ? 'Los mismos datos que contiene la descarga JSON.' : previewView === 'original' ? 'El archivo importado, conservado sin modificaciones.' : pageCount ? `${pageCount} páginas · PDF final.` : 'PDF final con la misma paginación que la descarga.'}
                         </p>
                     </div>
                     <button

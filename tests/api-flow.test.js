@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as files from '../src/server/controllers/file-controller.js';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -67,12 +68,32 @@ test('flujo de API: importar, consultar originales, editar, recuperar y exportar
         const list = await (await call(programs.listPrograms)).json();
         assert.equal(list.length, 3);
         const program = list.find((candidate) => candidate.code === '0613');
+        const fileList = await (await call(files.listFiles)).json();
+        assert.equal(fileList.length, 1);
+        assert.equal(fileList[0].pageCount, 38);
+        const file = await (await call(files.getFile, 'GET', undefined, { id: complete.sourceId })).json();
+        assert.equal(file.programs.length, 3);
+        assert.ok(!('storedPath' in file.source));
+        const filePreview = await call(files.previewFile, 'POST', {
+            programs: file.programs,
+            layout: 'original',
+        }, { id: complete.sourceId });
+        assert.equal(filePreview.status, 200, filePreview.ok ? '' : await filePreview.clone().text());
+        assert.deepEqual(Buffer.from(await filePreview.arrayBuffer()), await readFile(new URL('../ejemplo_pdf.pdf', import.meta.url)));
+        const invalidLayout = await call(files.previewFile, 'POST', {
+            programs: file.programs,
+            layout: 'unknown',
+        }, { id: complete.sourceId });
+        assert.equal(invalidLayout.status, 400);
+        const partialPreview = await call(files.previewFile, 'POST', { programs: [file.programs[0]] }, { id: complete.sourceId });
+        assert.equal(partialPreview.status, 400);
         const source = await (await call(documents.getSource, 'GET', undefined, { id: complete.sourceId })).json();
         assert.equal(source.pages.length, 38);
         assert.ok(!('storedPath' in source));
         const original = await call(documents.getOriginalDocument, 'GET', undefined, { id: complete.sourceId });
         assert.deepEqual(Buffer.from(await original.arrayBuffer()), await readFile(new URL('../ejemplo_pdf.pdf', import.meta.url)));
         const originalPreview = await call(exports.previewDocument, 'POST', {
+            layout: 'original',
             ids: [program.id],
             draft: true,
         });
@@ -90,10 +111,15 @@ test('flujo de API: importar, consultar originales, editar, recuperar y exportar
         const saved = await call(programs.saveProgramHandler, 'PUT', {
             ...program,
             teacher: 'Profesor de prueba',
+            sections: program.sections.map((section, index) => index === 0 ? {
+                ...section,
+                title: '',
+            } : section),
         }, { id: program.id });
         assert.equal(saved.status, 200);
         const updated = await saved.json();
         assert.equal(updated.revision, 2);
+        assert.equal(updated.sections[0].title, '');
         const stale = await call(programs.saveProgramHandler, 'PUT', program, { id: program.id });
         assert.equal(stale.status, 409);
         const recovered = await call(programs.restoreProgramHandler, 'POST', {
@@ -110,7 +136,9 @@ test('flujo de API: importar, consultar originales, editar, recuperar y exportar
             layout: 'institutional',
         });
         assert.equal(preview.status, 200);
-        assert.match(await preview.text(), /BORRADOR/);
+        assert.equal(preview.headers.get('X-Page-Count'), '38', 'Una exportación importada no puede aumentar sus páginas aunque se solicite la plantilla anterior');
+        assert.equal(preview.headers.get('Content-Type'), 'application/pdf');
+        assert.equal(Buffer.from(await preview.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
         const duplicateExport = await call(exports.downloadJSON, 'POST', {
             ids: [program.id, program.id],
             draft: true,
